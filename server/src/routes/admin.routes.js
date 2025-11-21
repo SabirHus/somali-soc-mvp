@@ -1,11 +1,20 @@
+// server/src/routes/admin.routes.js
 import { Router } from "express";
-import { attendees, checkin, login, logout } from "../controllers/admin.controller.js";
-import { adminGuard } from "../middleware/admin.guard.js";
+import {
+  getSummary,
+  getAttendees,
+  postToggleCheckin,
+} from "../controllers/admin.controller.js";
 
-const r = Router();
-r.post("/login", login);
-r.post("/logout", logout);
-r.use(adminGuard);
-r.get("/attendees", attendees);
-r.post("/checkin", checkin);
-export default r;
+const router = Router();
+
+// Frontend uses /summary (e.g. Register.jsx)
+router.get("/summary", getSummary);
+
+// Admin list/search
+router.get("/attendees", getAttendees);
+
+// QR / manual code toggle
+router.post("/checkin/toggle", postToggleCheckin);
+
+export default router;

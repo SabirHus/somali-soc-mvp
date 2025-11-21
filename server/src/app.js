@@ -1,49 +1,36 @@
-// web/src/lib/api.js
+import 'dotenv/config';
+import express from 'express';
+import morgan from 'morgan';
+import helmet from 'helmet';
+import cors from 'cors';
+import routes from './routes/index.js';
 
-// Where your API lives (falls back to 4000 in dev)
-export const API_URL =
-  import.meta.env.VITE_API_URL || "http://localhost:4000";
+const app = express();
+const PORT = process.env.PORT || 4000;
+const WEB_ORIGIN = process.env.WEB_ORIGIN || process.env.APP_URL || 'http://localhost:5173';
 
-// Small fetch helpers with JSON + credentials by default
-async function jsonFetch(url, init = {}) {
-  const res = await fetch(url, {
-    credentials: "include",
-    ...init,
-  });
-  // Non-2xx still try to parse JSON so UI can show a message
-  const text = await res.text();
-  const data = text ? JSON.parse(text) : null;
-  if (!res.ok) {
-    const err = new Error(data?.message || `HTTP ${res.status}`);
-    err.status = res.status;
-    err.data = data;
-    throw err;
+// NOTE: If you verify Stripe signatures you need the raw body:
+app.use((req, res, next) => {
+  if (req.originalUrl === '/webhooks/stripe') {
+    // raw buffer body (Express v4)
+    let data = Buffer.alloc(0);
+    req.setEncoding('utf8');
+    req.on('data', (chunk) => { data += chunk; });
+    req.on('end', () => { req.rawBody = data; next(); });
+  } else {
+    next();
   }
-  return data;
-}
+});
 
-export const api = {
-  get(path, init = {}) {
-    return jsonFetch(`${API_URL}${path}`, init);
-  },
-  post(path, body = {}, init = {}) {
-    return jsonFetch(`${API_URL}${path}`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        ...(init.headers || {}),
-      },
-      body: JSON.stringify(body),
-      ...init,
-    });
-  },
-  del(path, init = {}) {
-    return jsonFetch(`${API_URL}${path}`, {
-      method: "DELETE",
-      ...init,
-    });
-  },
-};
+app.use(helmet());
+app.use(morgan('dev'));
+app.use(cors({ origin: WEB_ORIGIN, credentials: true }));
+app.use(express.json());
 
-// Also offer a default export for flexibility
-export default api;
+// routes
+app.use('/', routes);
+
+app.listen(PORT, () => {
+  console.log(`API listening on :${PORT}`);
+  console.log(`CORS origin: ${WEB_ORIGIN}`);
+});

@@ -1,3 +1,8 @@
-import { PrismaClient } from "@prisma/client";
-export const prisma = globalThis.prisma || new PrismaClient();
-if (process.env.NODE_ENV !== "production") globalThis.prisma = prisma;
+// Single Prisma client (named export)
+import { PrismaClient } from '@prisma/client';
+
+export const prisma = new PrismaClient();
+
+process.on('beforeExit', async () => {
+  try { await prisma.$disconnect(); } catch { /* ignore */ }
+});
