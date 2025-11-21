@@ -1,30 +1,27 @@
 // server/src/app.js
-import 'dotenv/config';
-import express from 'express';
-import { corsMiddleware } from './config/cors.js';
-import { mountWebhook, mountPublic } from './routes/index.js';
-
-const PORT = Number(process.env.PORT || 4000);
-const WEB_ORIGIN = process.env.WEB_ORIGIN || 'http://localhost:5173';
+import "dotenv/config";
+import express from "express";
+import helmet from "helmet";
+import morgan from "morgan";
+import cookieParser from "cookie-parser";
+import { corsMiddleware } from "./config/cors.js";
+import routes from "./routes/index.js";
 
 const app = express();
 
-// 1) CORS first
-app.use(corsMiddleware());
-
-// 2) Webhook routes BEFORE JSON parser (needs raw body)
-mountWebhook(app);
-
-// 3) JSON parser for normal routes
+app.use(helmet());
+app.use(morgan("dev"));
 app.use(express.json());
+app.use(cookieParser());
+app.use(corsMiddleware);
 
-// 4) Public routes (health, etc.)
-mountPublic(app);
+app.get("/health", (_req, res) => res.json({ ok: true }));
+app.use("/", routes);
 
-// 5) Boot
-app.listen(PORT, () => {
-  console.log(`API listening on :${PORT}`);
-  console.log(`CORS origin: ${WEB_ORIGIN}`);
+const port = process.env.PORT || 4000;
+app.listen(port, () => {
+  console.log(`API listening on :${port}`);
+  console.log(`CORS origin: ${process.env.WEB_ORIGIN || "http://localhost:5173"}`);
 });
 
 export default app;

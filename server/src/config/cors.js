@@ -1,11 +1,11 @@
-import 'dotenv/config';
-import cors from 'cors';
+// server/src/config/cors.js
+import cors from "cors";
 
-const WEB_ORIGIN = process.env.WEB_ORIGIN || 'http://localhost:5173';
+const allowedOrigin = process.env.WEB_ORIGIN || "http://localhost:5173";
 
-export function corsMiddleware() {
-  return cors({
-    origin: WEB_ORIGIN,
-    credentials: false,
-  });
-}
+export const corsMiddleware = cors({
+  origin: allowedOrigin,
+  credentials: true,
+  methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization"],
+});
