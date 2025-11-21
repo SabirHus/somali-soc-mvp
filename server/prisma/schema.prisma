@@ -1,0 +1,23 @@
+generator client {
+  datasource db {
+  provider = "sqlite"
+  // no url here anymore
+}
+
+model Attendee {
+  id              String   @id @default(cuid())
+  createdAt       DateTime @default(now())
+  name            String
+  email           String
+  phone           String?
+  quantity        Int      @default(1)
+  status          Status   @default(pending)
+  code            String   @unique
+  stripeSessionId String?  @unique
+}
+
+enum Status {
+  pending
+  paid
+  checked_in
+}
