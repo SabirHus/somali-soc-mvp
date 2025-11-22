@@ -27,4 +27,37 @@ async function request(path, opts = {}) {
 export const api = {
   get:  (p)        => request(p, { method: "GET" }),
   post: (p, body)  => request(p, { method: "POST", body }),
+}
+
+// Helper: build headers with admin password if we have it
+export function adminHeaders(password) {
+  return {
+    'Content-Type': 'application/json',
+    'x-admin-password': password || '',
+  };
+}
+
+export async function fetchAdminAttendees(password, q = '') {
+  const res = await fetch(`/api/admin/attendees${q ? `?q=${encodeURIComponent(q)}` : ''}`, {
+    headers: adminHeaders(password),
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
+}
+
+export async function fetchAdminSummary(password) {
+  const res = await fetch(`/api/admin/summary`, {
+    headers: adminHeaders(password),
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
+}
+
+export async function toggleCheckin(password, code) {
+  const res = await fetch(`/api/admin/checkin/${encodeURIComponent(code)}`, {
+    method: 'POST',
+    headers: adminHeaders(password),
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
 };

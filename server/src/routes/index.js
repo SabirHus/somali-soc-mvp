@@ -2,8 +2,8 @@
 import { Router } from "express";
 
 import publicRoutes from "./public.routes.js";
-import adminRoutes from "./admin.routes.js";        // keep existing admin routes
-import webhookRoutes from "./webhook.routes.js";    // keep existing webhook routes
+import adminRoutes from "./admin.routes.js";        
+import webhookRoutes from "./webhook.routes.js";    
 
 const router = Router();
 

@@ -66,6 +66,34 @@ export default function Register() {
   return (
     <main>
       <h1>Somali Society — Event Registration</h1>
+<form
+  onSubmit={(e) => {
+    e.preventDefault();
+    const v = e.currentTarget.adminKey.value.trim();
+    localStorage.setItem('ADMIN_KEY', v);
+    alert('Admin key saved');
+    // optional: refresh data right after saving
+    // window.location.reload();
+  }}
+  style={{ textAlign: 'right', margin: '8px 0' }}
+>
+  <input
+    name="adminKey"
+    type="password"
+    placeholder="Admin key"
+    defaultValue={localStorage.getItem('ADMIN_KEY') || ''}
+    style={{ marginRight: 8 }}
+  />
+  <button type="submit">Save</button>
+</form>
+      
+
+    {localStorage.getItem('ADMIN_KEY') ? (
+      <p style={{ textAlign: "right", margin: "8px 0" }}>
+      <a href="/admin">Admin</a> · <a href="/admin/scan">Scan</a>
+      </p>
+      ) : null}
+
       <div className="card">
         {remaining !== null && <p><strong>Spaces remaining:</strong> {remaining}/{capacity}</p>}
         <p>Secure payment; QR ticket on success.</p>

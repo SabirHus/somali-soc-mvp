@@ -14,4 +14,6 @@ const router = createBrowserRouter([
   { path: "/admin/scan", element: <Scan /> }
 ]);
 
-createRoot(document.getElementById("root")).render(<RouterProvider router={router} />);
+createRoot(document.getElementById("root")).render(
+<RouterProvider router={router} />
+);
