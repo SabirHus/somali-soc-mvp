@@ -1,20 +1,10 @@
-// server/src/routes/admin.routes.js
-import { Router } from "express";
-import {
-  adminList,
-  adminToggle,
-  adminSummary,
-} from "../controllers/admin.controller.js";
-import { requireAdmin } from "../middleware/adminAuth.js";
-import { adminGuard } from "../middleware/admin.guard.js";
+import express from 'express';
+import { adminList, adminToggle } from '../controllers/admin.controller.js';
 
-const router = Router();
+const router = express.Router();
 
-router.use(requireAdmin);
-router.use(adminGuard);
-
-router.get("/summary", adminSummary);
-router.get("/attendees", adminList);
-router.post("/toggle-checkin", adminToggle);
+// All routes here are already protected by requireAuth middleware in app.js
+router.get('/attendees', adminList);
+router.post('/toggle-checkin', adminToggle);
 
 export default router;

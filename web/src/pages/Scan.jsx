@@ -1,176 +1,125 @@
-﻿// === web/src/pages/Scan.jsx ===
-import React, { useEffect, useRef, useState, useCallback } from "react";
-import { Html5QrcodeScanner } from "html5-qrcode";
+﻿import React, { useState } from 'react';
+import QRScanner from '../components/QRScanner';
 
-async function verifyAdmin(pass) {
-  const res = await fetch("/api/admin/summary", {
-    headers: { "x-admin-password": pass || "" },
-  });
-  return res.ok;
-}
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 
 export default function Scan() {
-  const [hasAdmin, setHasAdmin] = useState(!!localStorage.getItem("ADMIN_PASSWORD"));
-  const [adminErr, setAdminErr] = useState("");
-
+  const [scanning, setScanning] = useState(true);
   const [result, setResult] = useState(null);
-  const [status, setStatus] = useState("idle");
-  const [message, setMessage] = useState("");
+  const [loading, setLoading] = useState(false);
 
-  const scannerRef = useRef(null);
+  const handleScan = async (code) => {
+    if (loading) return;
+    
+    setScanning(false);
+    setLoading(true);
+    
+    try {
+      const token = localStorage.getItem('adminToken');
+      
+      if (!token) {
+        setResult({
+          status: 'error',
+          message: '❌ Not authenticated. Please login.'
+        });
+        setTimeout(() => {
+          window.location.href = '/admin';
+        }, 2000);
+        return;
+      }
 
-  useEffect(() => {
-    const pass = localStorage.getItem("ADMIN_PASSWORD");
-    if (!pass) return;
-    verifyAdmin(pass).then(ok => {
-      setHasAdmin(ok);
-      if (!ok) localStorage.removeItem("ADMIN_PASSWORD");
-    });
-  }, []);
+      const response = await fetch(`${API_URL}/api/admin/toggle-checkin`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ code })
+      });
 
-  const startScanner = useCallback(() => {
-    if (!hasAdmin) return;
-    if (scannerRef.current) return;
+      if (!response.ok) {
+        throw new Error('Invalid code or payment pending');
+      }
 
-    const config = { fps: 10, qrbox: { width: 250, height: 250 }, rememberLastUsedCamera: true };
-    const scanner = new Html5QrcodeScanner("qr-reader", config, false);
-    scannerRef.current = scanner;
-
-    scanner.render(
-      async (decodedText) => {
-        try { await scanner.clear(); } catch {}
-        scannerRef.current = null;
-
-        const code = (decodedText || "").trim();
-        setResult(code);
-
-        try {
-          const pass = localStorage.getItem("ADMIN_PASSWORD") || "";
-          const res = await fetch(`/api/admin/checkin/${encodeURIComponent(code)}`, {
-            method: "POST",
-            headers: { "x-admin-password": pass },
-          });
-
-          if (res.status === 401) {
-            setStatus("error");
-            setMessage("Not authorized. Enter the correct admin password first.");
-            return;
-          }
-          if (!res.ok) {
-            setStatus("error");
-            setMessage(`Server error (${res.status}).`);
-            return;
-          }
-
-          const json = await res.json();
-          if (json.checkedIn) {
-            setStatus("success");
-            setMessage(`Checked in: ${json.name ?? ""} (${json.code})`);
-          } else {
-            setStatus("already");
-            setMessage(`Already checked / undo: ${json.name ?? ""} (${json.code})`);
-          }
-        } catch {
-          setStatus("error");
-          setMessage("Network error while calling check-in.");
-        }
-      },
-      () => {}
-    );
-  }, [hasAdmin]);
-
-  useEffect(() => {
-    if (hasAdmin) startScanner();
-    return () => { try { scannerRef.current?.clear(); } catch {} scannerRef.current = null; };
-  }, [hasAdmin, startScanner]);
-
-  async function handleRescan() {
-    setResult(null);
-    setStatus("idle");
-    setMessage("");
-    startScanner();
-  }
-
-  async function handleSaveKey(e) {
-    e.preventDefault();
-    setAdminErr("");
-    const form = e.currentTarget;
-    const v = form.adminKey.value.trim();
-    form.reset();
-    if (!v) {
-      setHasAdmin(false);
-      localStorage.removeItem("ADMIN_PASSWORD");
-      setAdminErr("Please enter a password.");
-      return;
+      const attendee = await response.json();
+      
+      setResult({
+        status: attendee.checkedIn ? 'success' : 'already',
+        message: attendee.checkedIn 
+          ? `✅ ${attendee.name} checked in!`
+          : `⚠️ ${attendee.name} already checked in`,
+        attendee
+      });
+      
+      setTimeout(() => {
+        setResult(null);
+        setScanning(true);
+        setLoading(false);
+      }, 2500);
+      
+    } catch (err) {
+      setResult({
+        status: 'error',
+        message: '❌ Invalid QR code or payment pending'
+      });
+      
+      setTimeout(() => {
+        setResult(null);
+        setScanning(true);
+        setLoading(false);
+      }, 2500);
     }
-    const ok = await verifyAdmin(v);
-    if (ok) {
-      localStorage.setItem("ADMIN_PASSWORD", v);
-      setHasAdmin(true);
-      setAdminErr(""); // no success text
-      setTimeout(startScanner, 0);
-    } else {
-      localStorage.removeItem("ADMIN_PASSWORD");
-      setHasAdmin(false);
-      setAdminErr("Incorrect password.");
-    }
-  }
-
-  const bg =
-    status === "success" ? "#e6ffed" :
-    status === "already" ? "#fff8db" :
-    status === "error"   ? "#ffe6e6" :
-                           "#f5f5f5";
+  };
 
   return (
-    <main>
-      <div className="card topbar">
-        <div className="header-row">
-          <h1 className="header-title">Somali Society — Scan</h1>
-          <div className="header-actions">
-            <form onSubmit={handleSaveKey} className="inline-form" aria-label="admin unlock">
-              <input name="adminKey" type="password" placeholder="Admin password" autoComplete="off" />
-              <button type="submit" className="button">Save</button>
-            </form>
-            {adminErr && <span className="note error">{adminErr}</span>}
-            <div className="links-wrap">
-              <a href="/" className="button">Tickets</a>
-              {hasAdmin && (
-                <>
-                  <a href="/admin" className="button">Admin</a>
-                  <a href="/admin/scan" className="button">Scan</a>
-                </>
-              )}
-            </div>
-
-            {/* Logo on the far right */}
-            <div className="logo-wrap">
-              <img className="corner-logo" src="/logo.png" alt="Somali Society logo" />
-            </div>
-          </div>
+    <div style={{ padding: '20px', maxWidth: '800px', margin: '0 auto' }}>
+      <h1 style={{ textAlign: 'center', marginBottom: '30px' }}>📱 Check-In Scanner</h1>
+      
+      {scanning && !result && (
+        <div>
+          <p style={{ textAlign: 'center', marginBottom: '20px', fontSize: '16px', color: '#666' }}>
+            Position QR code within the frame
+          </p>
+          <QRScanner onScan={handleScan} />
         </div>
-      </div>
-
-      <div className="card">
-        {!hasAdmin && <em>Enter a valid admin password to enable the scanner.</em>}
-        <div id="qr-reader" style={{ width: 320, maxWidth: "100%" }} />
-        <div style={{ marginTop: 12, padding: 10, borderRadius: 6, background: bg }}>
-          {result ? (
-            <>
-              <div style={{ marginBottom: 6 }}>
-                <strong>Last scan:</strong>
-                <pre style={{ margin: 0 }}>{result}</pre>
-              </div>
-              <div>{message || "Processed."}</div>
-              <div style={{ marginTop: 8 }}>
-                <button onClick={handleRescan} className="button">Rescan</button>
-              </div>
-            </>
-          ) : (
-            <em>Point your camera at the QR code…</em>
+      )}
+      
+      {result && (
+        <div style={{
+          padding: '60px 40px',
+          borderRadius: '16px',
+          textAlign: 'center',
+          fontSize: '28px',
+          fontWeight: 'bold',
+          marginTop: '40px',
+          background: result.status === 'success' ? '#4caf50' :
+                     result.status === 'already' ? '#ff9800' : '#f44336',
+          color: 'white',
+          boxShadow: '0 4px 16px rgba(0,0,0,0.2)'
+        }}>
+          {result.message}
+          {result.attendee && (
+            <div style={{ marginTop: '30px', fontSize: '18px', fontWeight: 'normal' }}>
+              <p style={{ margin: '10px 0' }}>📧 {result.attendee.email}</p>
+              <p style={{ margin: '10px 0' }}>🎟️ Tickets: {result.attendee.quantity}</p>
+            </div>
           )}
         </div>
+      )}
+      
+      <div style={{ marginTop: '40px', textAlign: 'center' }}>
+        <a 
+          href="/admin" 
+          style={{ 
+            color: '#1a73e8', 
+            textDecoration: 'none',
+            fontSize: '16px',
+            fontWeight: '500'
+          }}
+        >
+          ← Back to Admin Dashboard
+        </a>
       </div>
-    </main>
+    </div>
   );
 }
