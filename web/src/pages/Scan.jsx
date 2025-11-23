@@ -1,17 +1,16 @@
 ﻿import React, { useState } from 'react';
-import QRScanner from '../components/QRScanner';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 
 export default function Scan() {
-  const [scanning, setScanning] = useState(true);
+  const [code, setCode] = useState('');
   const [result, setResult] = useState(null);
   const [loading, setLoading] = useState(false);
 
-  const handleScan = async (code) => {
-    if (loading) return;
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!code.trim()) return;
     
-    setScanning(false);
     setLoading(true);
     
     try {
@@ -34,7 +33,7 @@ export default function Scan() {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify({ code })
+        body: JSON.stringify({ code: code.trim() })
       });
 
       if (!response.ok) {
@@ -51,47 +50,80 @@ export default function Scan() {
         attendee
       });
       
+      setCode('');
+      
       setTimeout(() => {
         setResult(null);
-        setScanning(true);
-        setLoading(false);
-      }, 2500);
+      }, 3000);
       
     } catch (err) {
       setResult({
         status: 'error',
-        message: '❌ Invalid QR code or payment pending'
+        message: '❌ Invalid ticket code or payment pending'
       });
       
       setTimeout(() => {
         setResult(null);
-        setScanning(true);
-        setLoading(false);
-      }, 2500);
+      }, 3000);
+    } finally {
+      setLoading(false);
     }
   };
 
   return (
-    <div style={{ padding: '20px', maxWidth: '800px', margin: '0 auto' }}>
-      <h1 style={{ textAlign: 'center', marginBottom: '30px' }}>📱 Check-In Scanner</h1>
+    <div style={{ padding: '20px', maxWidth: '600px', margin: '0 auto' }}>
+      <h1 style={{ textAlign: 'center', marginBottom: '30px' }}>🎫 Check-In</h1>
       
-      {scanning && !result && (
-        <div>
-          <p style={{ textAlign: 'center', marginBottom: '20px', fontSize: '16px', color: '#666' }}>
-            Position QR code within the frame
-          </p>
-          <QRScanner onScan={handleScan} />
+      <form onSubmit={handleSubmit} style={{ marginBottom: '30px' }}>
+        <div style={{ marginBottom: '15px' }}>
+          <label style={{ display: 'block', marginBottom: '8px', fontWeight: '500' }}>
+            Enter Ticket Code:
+          </label>
+          <input
+            type="text"
+            value={code}
+            onChange={(e) => setCode(e.target.value)}
+            placeholder="SS-..."
+            style={{
+              width: '100%',
+              padding: '12px',
+              fontSize: '16px',
+              border: '2px solid #ddd',
+              borderRadius: '8px',
+              boxSizing: 'border-box',
+              textTransform: 'uppercase'
+            }}
+            disabled={loading}
+            autoFocus
+          />
         </div>
-      )}
+        
+        <button
+          type="submit"
+          disabled={loading || !code.trim()}
+          style={{
+            width: '100%',
+            padding: '14px',
+            background: loading ? '#ccc' : '#1a73e8',
+            color: 'white',
+            border: 'none',
+            borderRadius: '8px',
+            fontSize: '16px',
+            fontWeight: 'bold',
+            cursor: loading ? 'not-allowed' : 'pointer'
+          }}
+        >
+          {loading ? 'Checking...' : 'Check In'}
+        </button>
+      </form>
       
       {result && (
         <div style={{
-          padding: '60px 40px',
-          borderRadius: '16px',
+          padding: '40px 20px',
+          borderRadius: '12px',
           textAlign: 'center',
-          fontSize: '28px',
+          fontSize: '20px',
           fontWeight: 'bold',
-          marginTop: '40px',
           background: result.status === 'success' ? '#4caf50' :
                      result.status === 'already' ? '#ff9800' : '#f44336',
           color: 'white',
@@ -99,15 +131,15 @@ export default function Scan() {
         }}>
           {result.message}
           {result.attendee && (
-            <div style={{ marginTop: '30px', fontSize: '18px', fontWeight: 'normal' }}>
-              <p style={{ margin: '10px 0' }}>📧 {result.attendee.email}</p>
-              <p style={{ margin: '10px 0' }}>🎟️ Tickets: {result.attendee.quantity}</p>
+            <div style={{ marginTop: '20px', fontSize: '16px', fontWeight: 'normal' }}>
+              <p style={{ margin: '8px 0' }}>📧 {result.attendee.email}</p>
+              <p style={{ margin: '8px 0' }}>🎟️ Tickets: {result.attendee.quantity}</p>
             </div>
           )}
         </div>
       )}
       
-      <div style={{ marginTop: '40px', textAlign: 'center' }}>
+      <div style={{ marginTop: '30px', textAlign: 'center' }}>
         <a 
           href="/admin" 
           style={{ 
