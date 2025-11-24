@@ -1,5 +1,7 @@
+// server/src/routes/auth.routes.js
 import express from 'express';
 import { registerAdmin, loginAdmin } from '../services/auth.service.js';
+import { adminList, adminToggle } from '../controllers/admin.controller.js';
 
 const router = express.Router();
 
@@ -50,5 +52,8 @@ router.post('/login', async (req, res, next) => {
     });
   }
 });
+
+router.get('/attendees', adminList);
+router.post('/toggle-checkin', adminToggle);
 
 export default router;

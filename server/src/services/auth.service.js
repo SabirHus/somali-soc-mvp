@@ -1,8 +1,9 @@
+// server/src/routes/auth.service.js
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
 import { prisma } from '../models/prisma.js';
 
-const JWT_SECRET = process.env.JWT_SECRET || 'change-this-secret-key-in-production';
+const JWT_SECRET = process.env.JWT_SECRET || '23f364510d3b6426c511b6859157b42dd006390f8017d828f5e64a16f1a39965';
 const JWT_EXPIRES_IN = '7d';
 
 export async function registerAdmin({ email, password, name }) {

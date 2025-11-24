@@ -1,10 +1,10 @@
+// server/src/app.js - FINAL FIXED VERSION
 import express from 'express';
 import cors from 'cors';
 import Stripe from 'stripe';
 import { prisma } from './models/prisma.js';
 import { sendOrderEmail } from './services/email.service.js';
 import publicRoutes from './routes/public.routes.js';
-import adminRoutes from './routes/admin.routes.js';
 import authRoutes from './routes/auth.routes.js';
 import { requireAuth } from './middleware/auth.middleware.js';
 
@@ -39,15 +39,30 @@ app.post('/webhooks/stripe',
       const session = event.data.object;
       
       try {
+        console.log('🔍 Session metadata:', JSON.stringify(session.metadata, null, 2));
+        
         const { name, email, phone, quantity } = session.metadata;
+        
+        // Validate that we have the required data
+        if (!email || !name) {
+          console.error('❌ CRITICAL: email or name is missing from metadata!');
+          console.error('This is likely a test trigger with empty metadata.');
+          console.error('Metadata received:', session.metadata);
+          console.error('⚠️  Skipping this webhook - it doesn\'t have real payment data');
+          return res.json({ received: true, skipped: true, reason: 'missing_metadata' });
+        }
+        
         const code = `SS-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+        const parsedQuantity = parseInt(quantity) || 1;
+        
+        console.log('📝 Creating attendee with:', { name, email, phone, quantity: parsedQuantity, code });
         
         const attendee = await prisma.attendee.create({
           data: {
             name,
             email,
             phone: phone || null,
-            quantity: parseInt(quantity),
+            quantity: parsedQuantity,
             status: 'PAID',
             code,
             stripeSessionId: session.id,
@@ -55,19 +70,25 @@ app.post('/webhooks/stripe',
           }
         });
 
-        console.log('✅ Attendee created:', attendee.id);
+        console.log('✅ Attendee created:', attendee.id, 'with code:', code);
 
+        console.log('📧 Attempting to send email to:', email);
+        
         await sendOrderEmail({
           email,
           name,
           code,
-          quantity: parseInt(quantity),
+          quantity: parsedQuantity,
           amount: session.amount_total / 100
         });
 
-        console.log('✅ Email sent to:', email);
+        console.log('✅ Email sent successfully to:', email);
+        console.log('🎉 COMPLETE SUCCESS! Payment processed and email sent!');
+        
       } catch (err) {
         console.error('❌ Error processing webhook:', err);
+        console.error('❌ Error details:', err.message);
+        console.error('❌ Stack trace:', err.stack);
         return res.status(500).json({ error: 'Failed to process payment' });
       }
     }
@@ -89,7 +110,7 @@ app.use(cors({
 // ============================================
 app.use('/api', publicRoutes);
 app.use('/api/auth', authRoutes);
-app.use('/api/admin', requireAuth, adminRoutes);
+app.use('/api/admin', requireAuth, authRoutes);
 
 app.get('/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
@@ -104,7 +125,8 @@ app.use((err, req, res, next) => {
 
 app.listen(PORT, () => {
   console.log(`🚀 Server running on http://localhost:${PORT}`);
-  console.log(`📧 Webhook endpoint: http://localhost:${PORT}/webhooks/stripe`);
+  console.log(`📧 Webhook endpoint: http://localhost:4000/webhooks/stripe`);
+  console.log(`🌐 CORS enabled for: ${WEB_ORIGIN}`);
 });
 
 export default app;

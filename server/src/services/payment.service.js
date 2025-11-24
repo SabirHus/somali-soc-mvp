@@ -30,6 +30,7 @@ export async function createCheckoutSession({ name, email, phone, quantity }) {
       name: String(name || ""),
       email: String(email || ""),
       phone: String(phone || ""),
+      quantity: String(quantity || "1"), 
     },
   });
 
