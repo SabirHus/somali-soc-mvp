@@ -95,8 +95,10 @@ export async function sendOrderEmail({ email, name, code, quantity, amount }) {
       ]
     };
 
-    await transporter.sendMail(mailOptions);
+ const info = await transporter.sendMail(mailOptions);
     console.log('✅ Email sent successfully to:', email);
+    console.log('Message ID:', info.messageId);
+    return info;
   } catch (error) {
     console.error('❌ Email send failed:', error);
     throw error;
