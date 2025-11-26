@@ -1,51 +1,73 @@
-﻿import React, { useState, useEffect } from 'react';
+﻿import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
+import './Admin.css';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 
 export default function Admin() {
-  const [authed, setAuthed] = useState(false);
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [rows, setRows] = useState([]);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [token, setToken] = useState(null);
+  const [view, setView] = useState('login'); // login, events, attendees, create-event
+  const [events, setEvents] = useState([]);
+  const [selectedEvent, setSelectedEvent] = useState(null);
+  const [attendees, setAttendees] = useState([]);
+  const [summary, setSummary] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const navigate = useNavigate();
+
+  const [loginForm, setLoginForm] = useState({
+    email: '',
+    password: ''
+  });
+
+  const [eventForm, setEventForm] = useState({
+    name: '',
+    description: '',
+    location: '',
+    eventDate: '',
+    eventTime: '',
+    price: '',
+    capacity: '',
+    stripePriceId: ''
+  });
 
   useEffect(() => {
-    const token = localStorage.getItem('adminToken');
-    if (token) {
-      setAuthed(true);
-      fetchAttendees();
+    const savedToken = localStorage.getItem('adminToken');
+    if (savedToken) {
+      setToken(savedToken);
+      setIsAuthenticated(true);
+      setView('events');
+      fetchEvents(savedToken);
     }
   }, []);
-
-  useEffect(() => {
-    if (authed) {
-      fetchAttendees();
-    }
-  }, [searchQuery]);
 
   async function handleLogin(e) {
     e.preventDefault();
     setLoading(true);
-    
+    setError(null);
+
     try {
       const response = await fetch(`${API_URL}/api/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password })
+        body: JSON.stringify(loginForm)
       });
 
       const data = await response.json();
-      
-      if (data.token) {
-        localStorage.setItem('adminToken', data.token);
-        setAuthed(true);
-        await fetchAttendees();
-      } else {
-        alert('Invalid credentials');
+
+      if (!response.ok) {
+        throw new Error(data.message || 'Login failed');
       }
+
+      localStorage.setItem('adminToken', data.token);
+      setToken(data.token);
+      setIsAuthenticated(true);
+      setView('events');
+      fetchEvents(data.token);
     } catch (err) {
-      alert('Login failed: ' + err.message);
+      setError(err.message);
     } finally {
       setLoading(false);
     }
@@ -53,258 +75,475 @@ export default function Admin() {
 
   function handleLogout() {
     localStorage.removeItem('adminToken');
-    setAuthed(false);
-    setEmail('');
-    setPassword('');
-    setRows([]);
+    setToken(null);
+    setIsAuthenticated(false);
+    setView('login');
+    setEvents([]);
+    setAttendees([]);
+    setSelectedEvent(null);
   }
 
-  async function fetchAttendees() {
+  async function fetchEvents(authToken = token) {
+    setLoading(true);
     try {
-      const token = localStorage.getItem('adminToken');
-      const url = `${API_URL}/api/admin/attendees${searchQuery ? `?q=${encodeURIComponent(searchQuery)}` : ''}`;
-      
-      const response = await fetch(url, {
+      const response = await fetch(`${API_URL}/api/events?includeStats=true`, {
         headers: {
-          'Authorization': `Bearer ${token}`
+          'Authorization': `Bearer ${authToken}`
         }
       });
-      
-      if (response.ok) {
-        const data = await response.json();
-        setRows(data);
-      } else if (response.status === 401) {
-        handleLogout();
-      }
+
+      if (!response.ok) throw new Error('Failed to fetch events');
+      const data = await response.json();
+      setEvents(data);
     } catch (err) {
-      console.error('Failed to fetch attendees:', err);
+      setError(err.message);
+    } finally {
+      setLoading(false);
     }
   }
 
-  async function handleToggleCheckIn(code) {
+  async function fetchEventAttendees(eventId) {
+    setLoading(true);
     try {
-      const token = localStorage.getItem('adminToken');
-      const response = await fetch(`${API_URL}/api/admin/toggle-checkin`, {
+      const [attendeesRes, summaryRes] = await Promise.all([
+        fetch(`${API_URL}/api/events/${eventId}/attendees`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        }),
+        fetch(`${API_URL}/api/events/${eventId}/summary`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        })
+      ]);
+
+      if (!attendeesRes.ok || !summaryRes.ok) throw new Error('Failed to fetch data');
+
+      const attendeesData = await attendeesRes.json();
+      const summaryData = await summaryRes.json();
+
+      setAttendees(attendeesData);
+      setSummary(summaryData);
+      setSelectedEvent(events.find(e => e.id === eventId));
+      setView('attendees');
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleCreateEvent(e) {
+    e.preventDefault();
+    setLoading(true);
+    setError(null);
+
+    try {
+      const response = await fetch(`${API_URL}/api/events`, {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
         },
-        body: JSON.stringify({ code })
+        body: JSON.stringify({
+          ...eventForm,
+          price: parseFloat(eventForm.price),
+          capacity: parseInt(eventForm.capacity)
+        })
       });
 
-      if (response.ok) {
-        const updated = await response.json();
-        setRows(prev => prev.map(r => r.code === code ? updated : r));
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.message || 'Failed to create event');
       }
+
+      alert('Event created successfully!');
+      setEventForm({
+        name: '',
+        description: '',
+        location: '',
+        eventDate: '',
+        eventTime: '',
+        price: '',
+        capacity: '',
+        stripePriceId: ''
+      });
+      setView('events');
+      fetchEvents();
     } catch (err) {
-      console.error('Toggle check-in failed:', err);
-      alert('Failed to update check-in status');
+      setError(err.message);
+    } finally {
+      setLoading(false);
     }
   }
 
-  // Login Form
-  if (!authed) {
+  async function toggleEventActive(eventId, currentStatus) {
+    try {
+      const response = await fetch(`${API_URL}/api/events/${eventId}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ isActive: !currentStatus })
+      });
+
+      if (!response.ok) throw new Error('Failed to update event');
+      
+      fetchEvents();
+    } catch (err) {
+      setError(err.message);
+    }
+  }
+
+  function formatPrice(price) {
+    return new Intl.NumberFormat('en-GB', {
+      style: 'currency',
+      currency: 'GBP'
+    }).format(price);
+  }
+
+  function formatDate(dateString) {
+    return new Date(dateString).toLocaleDateString('en-GB', {
+      weekday: 'short',
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric'
+    });
+  }
+
+  const filteredAttendees = attendees.filter(a =>
+    a.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    a.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    a.code.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
+  // LOGIN VIEW
+  if (!isAuthenticated) {
     return (
-      <div style={{ maxWidth: '400px', margin: '100px auto', padding: '40px', background: '#f5f5f5', borderRadius: '12px', boxShadow: '0 2px 8px rgba(0,0,0,0.1)' }}>
-        <div style={{textAlign: 'center' }}>
-        <a 
-          href="/" 
-          style={{ 
-            color: '#1a73e8', 
-            textDecoration: 'none',
-            fontSize: '15px',
-            fontWeight: '500'
-          }}
-        >
-          ← Back to Ticket Form
-        </a>
-      </div>
-        <h1 style={{ textAlign: 'center', marginBottom: '30px', color: '#1a73e8' }}>🔐 Admin Login</h1>
-        <form onSubmit={handleLogin}>
-          <div style={{ marginBottom: '20px' }}>
-            <label style={{ display: 'block', marginBottom: '8px', fontWeight: '500' }}>Email</label>
-            <input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
-              style={{ 
-                width: '100%', 
-                padding: '12px', 
-                borderRadius: '6px', 
-                border: '1px solid #ddd',
-                fontSize: '14px',
-                boxSizing: 'border-box'
-              }}
-            />
-          </div>
-          <div style={{ marginBottom: '24px' }}>
-            <label style={{ display: 'block', marginBottom: '8px', fontWeight: '500' }}>Password</label>
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-              style={{ 
-                width: '100%', 
-                padding: '12px', 
-                borderRadius: '6px', 
-                border: '1px solid #ddd',
-                fontSize: '14px',
-                boxSizing: 'border-box'
-              }}
-            />
-          </div>
-          <button 
-            type="submit" 
-            disabled={loading}
-            style={{ 
-              width: '100%', 
-              padding: '14px', 
-              background: loading ? '#ccc' : '#1a73e8', 
-              color: 'white', 
-              border: 'none', 
-              borderRadius: '6px', 
-              fontSize: '16px',
-              fontWeight: 'bold',
-              cursor: loading ? 'not-allowed' : 'pointer'
-            }}
-          >
-            {loading ? 'Logging in...' : 'Login'}
+      <div className="admin-container">
+        <div className="admin-login">
+          <h1>Admin Login</h1>
+          <p>Somali Society Salford</p>
+
+          {error && <div className="alert alert-error">{error}</div>}
+
+          <form onSubmit={handleLogin}>
+            <div className="form-group">
+              <label>Email</label>
+              <input
+                type="email"
+                value={loginForm.email}
+                onChange={(e) => setLoginForm({ ...loginForm, email: e.target.value })}
+                required
+                disabled={loading}
+              />
+            </div>
+
+            <div className="form-group">
+              <label>Password</label>
+              <input
+                type="password"
+                value={loginForm.password}
+                onChange={(e) => setLoginForm({ ...loginForm, password: e.target.value })}
+                required
+                disabled={loading}
+              />
+            </div>
+
+            <button type="submit" className="btn btn-primary" disabled={loading}>
+              {loading ? 'Logging in...' : 'Login'}
+            </button>
+          </form>
+
+          <button onClick={() => navigate('/')} className="btn btn-secondary" style={{ marginTop: '20px' }}>
+            Back to Events
           </button>
-        </form>
+        </div>
       </div>
     );
   }
 
-  // Admin Dashboard
-  const paidCount = rows.filter(r => r.status === 'PAID').length;
-  const checkedInCount = rows.filter(r => r.checkedIn).length;
-  const totalTickets = rows.reduce((sum, r) => sum + r.quantity, 0);
-
+  // MAIN ADMIN VIEW
   return (
-    <div style={{ padding: '20px', maxWidth: '1200px', margin: '0 auto' }}>
-      {/* Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '30px' }}>
-        <h1 style={{ margin: 0 }}>📊 Admin Dashboard</h1>
-        <div>
-          <a href="/" className="button">Tickets</a>
-          <a href="/scan" style={{ marginRight: '20px', color: '#1a73e8', textDecoration: 'none', fontWeight: '500' }}>
-            📱 Scanner
-          </a>
-          <button 
-            onClick={handleLogout} 
-            style={{ 
-              padding: '10px 20px', 
-              background: '#f44336', 
-              color: 'white', 
-              border: 'none', 
-              borderRadius: '6px', 
-              cursor: 'pointer',
-              fontWeight: '500'
-            }}
-          >
+    <div className="admin-container">
+      <div className="admin-header">
+        <h1>Admin Dashboard</h1>
+        <div className="admin-nav">
+          <button onClick={() => setView('events')} className={view === 'events' ? 'active' : ''}>
+            Events
+          </button>
+          <button onClick={() => setView('create-event')} className={view === 'create-event' ? 'active' : ''}>
+            Create Event
+          </button>
+          <button onClick={() => navigate('/scan')} className="btn-scan">
+            Scanner
+          </button>
+          <button onClick={handleLogout} className="btn-logout">
             Logout
           </button>
         </div>
       </div>
 
-      {/* Stats */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '20px', marginBottom: '30px' }}>
-        <div style={{ background: '#e3f2fd', padding: '20px', borderRadius: '8px', textAlign: 'center' }}>
-          <div style={{ fontSize: '32px', fontWeight: 'bold', color: '#1a73e8' }}>{paidCount}</div>
-          <div style={{ color: '#666', marginTop: '5px' }}>Paid Registrations</div>
-        </div>
-        <div style={{ background: '#e8f5e9', padding: '20px', borderRadius: '8px', textAlign: 'center' }}>
-          <div style={{ fontSize: '32px', fontWeight: 'bold', color: '#4caf50' }}>{checkedInCount}</div>
-          <div style={{ color: '#666', marginTop: '5px' }}>Checked In</div>
-        </div>
-        <div style={{ background: '#fff3e0', padding: '20px', borderRadius: '8px', textAlign: 'center' }}>
-          <div style={{ fontSize: '32px', fontWeight: 'bold', color: '#ff9800' }}>{totalTickets}</div>
-          <div style={{ color: '#666', marginTop: '5px' }}>Total Tickets</div>
-        </div>
-      </div>
+      {error && <div className="alert alert-error">{error}</div>}
 
-      {/* Search */}
-      <div style={{ marginBottom: '20px' }}>
-        <input
-          type="text"
-          placeholder="🔍 Search by name, email, or phone..."
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          style={{
-            width: '100%',
-            padding: '12px',
-            fontSize: '16px',
-            border: '2px solid #ddd',
-            borderRadius: '8px',
-            boxSizing: 'border-box'
-          }}
-        />
-      </div>
+      {/* EVENTS LIST VIEW */}
+      {view === 'events' && (
+        <div className="admin-content">
+          <h2>All Events</h2>
+          {loading ? (
+            <div className="loading">Loading events...</div>
+          ) : events.length === 0 ? (
+            <div className="empty-state">
+              <p>No events created yet.</p>
+              <button onClick={() => setView('create-event')} className="btn btn-primary">
+                Create First Event
+              </button>
+            </div>
+          ) : (
+            <div className="events-table">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Event Name</th>
+                    <th>Date</th>
+                    <th>Location</th>
+                    <th>Price</th>
+                    <th>Sold</th>
+                    <th>Revenue</th>
+                    <th>Status</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {events.map(event => (
+                    <tr key={event.id}>
+                      <td><strong>{event.name}</strong></td>
+                      <td>{formatDate(event.eventDate)}</td>
+                      <td>{event.location}</td>
+                      <td>{formatPrice(event.price)}</td>
+                      <td>{event.attendeeCount} / {event.capacity}</td>
+                      <td>{formatPrice(event.attendeeCount * event.price)}</td>
+                      <td>
+                        <span className={`badge ${event.isActive ? 'badge-active' : 'badge-inactive'}`}>
+                          {event.isActive ? 'Active' : 'Inactive'}
+                        </span>
+                      </td>
+                      <td>
+                        <button
+                          onClick={() => fetchEventAttendees(event.id)}
+                          className="btn btn-small"
+                        >
+                          View Attendees
+                        </button>
+                        <button
+                          onClick={() => toggleEventActive(event.id, event.isActive)}
+                          className="btn btn-small"
+                        >
+                          {event.isActive ? 'Deactivate' : 'Activate'}
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
 
-      {/* Attendee List */}
-      <div style={{ background: 'white', borderRadius: '8px', boxShadow: '0 2px 8px rgba(0,0,0,0.1)', overflow: 'hidden' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-          <thead>
-            <tr style={{ background: '#f5f5f5', borderBottom: '2px solid #ddd' }}>
-              <th style={{ padding: '12px', textAlign: 'left' }}>Name</th>
-              <th style={{ padding: '12px', textAlign: 'left' }}>Email</th>
-              <th style={{ padding: '12px', textAlign: 'left' }}>Phone</th>
-              <th style={{ padding: '12px', textAlign: 'center' }}>Tickets</th>
-              <th style={{ padding: '12px', textAlign: 'center' }}>Status</th>
-              <th style={{ padding: '12px', textAlign: 'center' }}>Check-In</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.length === 0 ? (
-              <tr>
-                <td colSpan="6" style={{ padding: '40px', textAlign: 'center', color: '#999' }}>
-                  No attendees found
-                </td>
-              </tr>
-            ) : (
-              rows.map((row) => (
-                <tr key={row.id} style={{ borderBottom: '1px solid #eee' }}>
-                  <td style={{ padding: '12px' }}>{row.name}</td>
-                  <td style={{ padding: '12px' }}>{row.email}</td>
-                  <td style={{ padding: '12px' }}>{row.phone || '-'}</td>
-                  <td style={{ padding: '12px', textAlign: 'center' }}>{row.quantity}</td>
-                  <td style={{ padding: '12px', textAlign: 'center' }}>
-                    <span style={{
-                      padding: '4px 12px',
-                      borderRadius: '12px',
-                      fontSize: '12px',
-                      fontWeight: 'bold',
-                      background: row.status === 'PAID' ? '#e8f5e9' : '#fff3e0',
-                      color: row.status === 'PAID' ? '#4caf50' : '#ff9800'
-                    }}>
-                      {row.status}
-                    </span>
-                  </td>
-                  <td style={{ padding: '12px', textAlign: 'center' }}>
-                    <button
-                      onClick={() => handleToggleCheckIn(row.code)}
-                      style={{
-                        padding: '6px 16px',
-                        borderRadius: '6px',
-                        border: 'none',
-                        fontWeight: '500',
-                        cursor: 'pointer',
-                        background: row.checkedIn ? '#4caf50' : '#e0e0e0',
-                        color: row.checkedIn ? 'white' : '#333'
-                      }}
-                    >
-                      {row.checkedIn ? '✓ Checked In' : 'Check In'}
-                    </button>
-                  </td>
+      {/* CREATE EVENT VIEW */}
+      {view === 'create-event' && (
+        <div className="admin-content">
+          <h2>Create New Event</h2>
+          <form onSubmit={handleCreateEvent} className="event-form">
+            <div className="form-row">
+              <div className="form-group">
+                <label>Event Name *</label>
+                <input
+                  type="text"
+                  value={eventForm.name}
+                  onChange={(e) => setEventForm({ ...eventForm, name: e.target.value })}
+                  required
+                  placeholder="Somali Cultural Night"
+                />
+              </div>
+
+              <div className="form-group">
+                <label>Location *</label>
+                <input
+                  type="text"
+                  value={eventForm.location}
+                  onChange={(e) => setEventForm({ ...eventForm, location: e.target.value })}
+                  required
+                  placeholder="Salford Community Centre"
+                />
+              </div>
+            </div>
+
+            <div className="form-group">
+              <label>Description</label>
+              <textarea
+                value={eventForm.description}
+                onChange={(e) => setEventForm({ ...eventForm, description: e.target.value })}
+                placeholder="Brief description of the event..."
+                rows="3"
+              />
+            </div>
+
+            <div className="form-row">
+              <div className="form-group">
+                <label>Date *</label>
+                <input
+                  type="date"
+                  value={eventForm.eventDate}
+                  onChange={(e) => setEventForm({ ...eventForm, eventDate: e.target.value })}
+                  required
+                />
+              </div>
+
+              <div className="form-group">
+                <label>Time *</label>
+                <input
+                  type="text"
+                  value={eventForm.eventTime}
+                  onChange={(e) => setEventForm({ ...eventForm, eventTime: e.target.value })}
+                  required
+                  placeholder="7:00 PM - 11:00 PM"
+                />
+              </div>
+            </div>
+
+            <div className="form-row">
+              <div className="form-group">
+                <label>Price (£) *</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  value={eventForm.price}
+                  onChange={(e) => setEventForm({ ...eventForm, price: e.target.value })}
+                  required
+                  placeholder="20.00"
+                />
+              </div>
+
+              <div className="form-group">
+                <label>Capacity *</label>
+                <input
+                  type="number"
+                  value={eventForm.capacity}
+                  onChange={(e) => setEventForm({ ...eventForm, capacity: e.target.value })}
+                  required
+                  placeholder="100"
+                />
+              </div>
+            </div>
+
+            <div className="form-group">
+              <label>Stripe Price ID *</label>
+              <input
+                type="text"
+                value={eventForm.stripePriceId}
+                onChange={(e) => setEventForm({ ...eventForm, stripePriceId: e.target.value })}
+                required
+                placeholder="price_1234567890abcdef"
+              />
+              <small>Get this from your Stripe Dashboard → Products</small>
+            </div>
+
+            <div className="form-actions">
+              <button type="submit" className="btn btn-primary" disabled={loading}>
+                {loading ? 'Creating...' : 'Create Event'}
+              </button>
+              <button
+                type="button"
+                onClick={() => setView('events')}
+                className="btn btn-secondary"
+              >
+                Cancel
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {/* ATTENDEES VIEW */}
+      {view === 'attendees' && selectedEvent && (
+        <div className="admin-content">
+          <button onClick={() => setView('events')} className="back-btn">
+            ← Back to Events
+          </button>
+
+          <h2>{selectedEvent.name} - Attendees</h2>
+
+          {summary && (
+            <div className="summary-cards">
+              <div className="summary-card">
+                <div className="summary-value">{summary.totalAttendees}</div>
+                <div className="summary-label">Total Attendees</div>
+              </div>
+              <div className="summary-card">
+                <div className="summary-value">{summary.checkedIn}</div>
+                <div className="summary-label">Checked In</div>
+              </div>
+              <div className="summary-card">
+                <div className="summary-value">{summary.remaining}</div>
+                <div className="summary-label">Tickets Left</div>
+              </div>
+              <div className="summary-card">
+                <div className="summary-value">{formatPrice(summary.revenue)}</div>
+                <div className="summary-label">Total Revenue</div>
+              </div>
+            </div>
+          )}
+
+          <div className="search-box">
+            <input
+              type="text"
+              placeholder="Search by name, email, or code..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+            />
+          </div>
+
+          <div className="attendees-table">
+            <table>
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th>Email</th>
+                  <th>Phone</th>
+                  <th>Code</th>
+                  <th>Checked In</th>
+                  <th>Registered</th>
                 </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
+              </thead>
+              <tbody>
+                {filteredAttendees.length === 0 ? (
+                  <tr>
+                    <td colSpan="6" style={{ textAlign: 'center', padding: '40px' }}>
+                      No attendees found
+                    </td>
+                  </tr>
+                ) : (
+                  filteredAttendees.map(attendee => (
+                    <tr key={attendee.id}>
+                      <td><strong>{attendee.name}</strong></td>
+                      <td>{attendee.email}</td>
+                      <td>{attendee.phone || 'N/A'}</td>
+                      <td><code>{attendee.code}</code></td>
+                      <td>
+                        <span className={`badge ${attendee.checkedIn ? 'badge-success' : 'badge-pending'}`}>
+                          {attendee.checkedIn ? 'Yes' : 'No'}
+                        </span>
+                      </td>
+                      <td>{formatDate(attendee.createdAt)}</td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

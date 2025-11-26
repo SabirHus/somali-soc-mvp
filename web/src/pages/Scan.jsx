@@ -1,340 +1,318 @@
-﻿import React, { useState, useRef, useEffect } from 'react';
-import { BrowserMultiFormatReader } from '@zxing/library';
+﻿import { useState, useEffect, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
+import './Scan.css';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 
 export default function Scan() {
-  const [code, setCode] = useState('');
-  const [result, setResult] = useState(null);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [token, setToken] = useState(null);
+  const [scanning, setScanning] = useState(false);
+  const [manualCode, setManualCode] = useState('');
+  const [lastScannedCode, setLastScannedCode] = useState(null);
+  const [attendee, setAttendee] = useState(null);
+  const [message, setMessage] = useState(null);
   const [loading, setLoading] = useState(false);
-  const [scannerMode, setScannerMode] = useState('manual'); // 'manual' or 'camera'
-  const [cameraError, setCameraError] = useState('');
-  
   const videoRef = useRef(null);
-  const codeReaderRef = useRef(null);
+  const canvasRef = useRef(null);
+  const scanIntervalRef = useRef(null);
+  const navigate = useNavigate();
 
-  // Initialize QR scanner
   useEffect(() => {
-    if (scannerMode === 'camera') {
-      startScanner();
+    const savedToken = localStorage.getItem('adminToken');
+    if (savedToken) {
+      setToken(savedToken);
+      setIsAuthenticated(true);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (scanning) {
+      startCamera();
+    } else {
+      stopCamera();
+    }
+
+    return () => stopCamera();
+  }, [scanning]);
+
+  async function startCamera() {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: 'environment' }
+      });
+      
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        videoRef.current.play();
+        
+        // Start scanning for QR codes
+        scanIntervalRef.current = setInterval(scanQRCode, 500);
+      }
+    } catch (err) {
+      showMessage('error', 'Failed to access camera: ' + err.message);
+      setScanning(false);
+    }
+  }
+
+  function stopCamera() {
+    if (videoRef.current && videoRef.current.srcObject) {
+      const tracks = videoRef.current.srcObject.getTracks();
+      tracks.forEach(track => track.stop());
+      videoRef.current.srcObject = null;
     }
     
-    return () => {
-      stopScanner();
-    };
-  }, [scannerMode]);
+    if (scanIntervalRef.current) {
+      clearInterval(scanIntervalRef.current);
+    }
+  }
 
-  const startScanner = async () => {
-    try {
-      setCameraError('');
-      const codeReader = new BrowserMultiFormatReader();
-      codeReaderRef.current = codeReader;
+  async function scanQRCode() {
+    if (!videoRef.current || !canvasRef.current) return;
 
-      const videoInputDevices = await codeReader.listVideoInputDevices();
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
+    const context = canvas.getContext('2d');
+
+    if (video.readyState === video.HAVE_ENOUGH_DATA) {
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      context.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+      const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
       
-      if (videoInputDevices.length === 0) {
-        setCameraError('No camera found on this device');
-        return;
-      }
-
-      // Prefer back camera on mobile
-      const selectedDevice = videoInputDevices.find(device => 
-        device.label.toLowerCase().includes('back')
-      ) || videoInputDevices[0];
-
-      await codeReader.decodeFromVideoDevice(
-        selectedDevice.deviceId,
-        videoRef.current,
-        (result, error) => {
-          if (result) {
-            const scannedCode = result.getText();
-            console.log('QR Code scanned:', scannedCode);
-            handleCheckIn(scannedCode);
-          }
-          if (error && error.name !== 'NotFoundException') {
-            console.error('Scanner error:', error);
+      try {
+        // Use jsQR library to decode
+        const code = window.jsQR(imageData.data, imageData.width, imageData.height);
+        
+        if (code && code.data) {
+          const scannedCode = code.data.trim();
+          
+          // Only process if it's a new code
+          if (scannedCode !== lastScannedCode && scannedCode.startsWith('SS-')) {
+            setLastScannedCode(scannedCode);
+            await handleCheckIn(scannedCode);
           }
         }
-      );
-    } catch (err) {
-      console.error('Failed to start scanner:', err);
-      setCameraError('Failed to access camera. Please enable camera permissions.');
-    }
-  };
-
-  const stopScanner = () => {
-    if (codeReaderRef.current) {
-      codeReaderRef.current.reset();
-      codeReaderRef.current = null;
-    }
-  };
-
-  const handleCheckIn = async (ticketCode) => {
-    if (loading || !ticketCode.trim()) return;
-    
-    setLoading(true);
-    
-    try {
-      const token = localStorage.getItem('adminToken');
-      
-      if (!token) {
-        setResult({
-          status: 'error',
-          message: '❌ Not authenticated. Please login.'
-        });
-        setTimeout(() => {
-          window.location.href = '/admin';
-        }, 2000);
-        return;
+      } catch (err) {
+        console.error('QR scanning error:', err);
       }
+    }
+  }
 
-      const response = await fetch(`${API_URL}/api/admin/toggle-checkin`, {
+  async function handleCheckIn(code) {
+    if (!token) {
+      showMessage('error', 'Not authenticated');
+      return;
+    }
+
+    setLoading(true);
+    playSound('scan');
+
+    try {
+      const response = await fetch(`${API_URL}/api/attendees/${code}/checkin`, {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ code: ticketCode.trim() })
+          'Authorization': `Bearer ${token}`
+        }
       });
+
+      const data = await response.json();
 
       if (!response.ok) {
-        throw new Error('Invalid code or payment pending');
+        throw new Error(data.message || 'Check-in failed');
       }
 
-      const attendee = await response.json();
+      setAttendee(data);
       
-      setResult({
-        status: attendee.checkedIn ? 'success' : 'already',
-        message: attendee.checkedIn 
-          ? `✅ ${attendee.name} checked in!`
-          : `⚠️ ${attendee.name} already checked in`,
-        attendee
-      });
-      
-      setCode('');
-      
-      // Auto-reset after 3 seconds
+      if (data.checkedIn) {
+        showMessage('success', `✅ ${data.name} checked in successfully!`);
+        playSound('success');
+      } else {
+        showMessage('warning', `⚠️ ${data.name} checked out`);
+        playSound('warning');
+      }
+
+      // Clear after 5 seconds
       setTimeout(() => {
-        setResult(null);
-      }, 3000);
-      
+        setAttendee(null);
+        setLastScannedCode(null);
+      }, 5000);
+
     } catch (err) {
-      setResult({
-        status: 'error',
-        message: '❌ Invalid ticket code or payment pending'
-      });
+      showMessage('error', err.message);
+      playSound('error');
+      setAttendee(null);
       
+      // Allow retry after 2 seconds
       setTimeout(() => {
-        setResult(null);
-      }, 3000);
+        setLastScannedCode(null);
+      }, 2000);
     } finally {
       setLoading(false);
     }
-  };
+  }
 
-  const handleManualSubmit = (e) => {
+  async function handleManualCheckIn(e) {
     e.preventDefault();
-    handleCheckIn(code);
-  };
+    if (manualCode.trim()) {
+      await handleCheckIn(manualCode.trim().toUpperCase());
+      setManualCode('');
+    }
+  }
 
-  const toggleMode = () => {
-    setScannerMode(prev => prev === 'manual' ? 'camera' : 'manual');
-    setResult(null);
-    setCode('');
-  };
+  function showMessage(type, text) {
+    setMessage({ type, text });
+    setTimeout(() => setMessage(null), 5000);
+  }
+
+  function playSound(type) {
+    // Create audio context for sound feedback
+    const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+    const oscillator = audioContext.createOscillator();
+    const gainNode = audioContext.createGain();
+    
+    oscillator.connect(gainNode);
+    gainNode.connect(audioContext.destination);
+    
+    switch(type) {
+      case 'success':
+        oscillator.frequency.value = 800;
+        gainNode.gain.value = 0.3;
+        oscillator.start();
+        oscillator.stop(audioContext.currentTime + 0.1);
+        break;
+      case 'error':
+        oscillator.frequency.value = 200;
+        gainNode.gain.value = 0.3;
+        oscillator.start();
+        oscillator.stop(audioContext.currentTime + 0.3);
+        break;
+      case 'warning':
+        oscillator.frequency.value = 400;
+        gainNode.gain.value = 0.3;
+        oscillator.start();
+        oscillator.stop(audioContext.currentTime + 0.15);
+        break;
+      case 'scan':
+        oscillator.frequency.value = 600;
+        gainNode.gain.value = 0.1;
+        oscillator.start();
+        oscillator.stop(audioContext.currentTime + 0.05);
+        break;
+    }
+  }
+
+  if (!isAuthenticated) {
+    return (
+      <div className="scan-container">
+        <div className="scan-login">
+          <h1>Scanner Access</h1>
+          <p>You must be logged in as admin</p>
+          <button onClick={() => navigate('/admin')} className="btn btn-primary">
+            Go to Admin Login
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div style={{ padding: '20px', maxWidth: '600px', margin: '0 auto' }}>
-      <h1 style={{ textAlign: 'center', marginBottom: '20px' }}>🎫 Check-In</h1>
-      
-      {/* Mode Toggle */}
-      <div style={{ 
-        display: 'flex', 
-        gap: '10px', 
-        marginBottom: '30px',
-        justifyContent: 'center'
-      }}>
-        <button
-          onClick={() => setScannerMode('manual')}
-          style={{
-            padding: '10px 20px',
-            background: scannerMode === 'manual' ? '#1a73e8' : '#e0e0e0',
-            color: scannerMode === 'manual' ? 'white' : '#333',
-            border: 'none',
-            borderRadius: '8px',
-            fontSize: '14px',
-            fontWeight: '500',
-            cursor: 'pointer'
-          }}
-        >
-          ⌨️ Manual Entry
+    <div className="scan-container">
+      <div className="scan-header">
+        <button onClick={() => navigate('/admin')} className="back-btn">
+          ← Back to Dashboard
         </button>
-        <button
-          onClick={() => setScannerMode('camera')}
-          style={{
-            padding: '10px 20px',
-            background: scannerMode === 'camera' ? '#1a73e8' : '#e0e0e0',
-            color: scannerMode === 'camera' ? 'white' : '#333',
-            border: 'none',
-            borderRadius: '8px',
-            fontSize: '14px',
-            fontWeight: '500',
-            cursor: 'pointer'
-          }}
-        >
-          📷 Scan QR
-        </button>
+        <h1>QR Code Scanner</h1>
       </div>
 
-      {/* Manual Entry Mode */}
-      {scannerMode === 'manual' && (
-        <form onSubmit={handleManualSubmit} style={{ marginBottom: '30px' }}>
-          <div style={{ marginBottom: '15px' }}>
-            <label style={{ display: 'block', marginBottom: '8px', fontWeight: '500' }}>
-              Enter Ticket Code:
-            </label>
-            <input
-              type="text"
-              value={code}
-              onChange={(e) => setCode(e.target.value)}
-              placeholder="SS-..."
-              style={{
-                width: '100%',
-                padding: '12px',
-                fontSize: '16px',
-                border: '2px solid #ddd',
-                borderRadius: '8px',
-                boxSizing: 'border-box',
-                textTransform: 'uppercase'
-              }}
-              disabled={loading}
-              autoFocus
-            />
+      {message && (
+        <div className={`scan-message scan-message-${message.type}`}>
+          {message.text}
+        </div>
+      )}
+
+      <div className="scan-content">
+        <div className="scanner-section">
+          <div className="scanner-controls">
+            <button
+              onClick={() => setScanning(!scanning)}
+              className={`btn ${scanning ? 'btn-danger' : 'btn-primary'}`}
+            >
+              {scanning ? '⏹ Stop Scanner' : '📷 Start Scanner'}
+            </button>
           </div>
-          
-          <button
-            type="submit"
-            disabled={loading || !code.trim()}
-            style={{
-              width: '100%',
-              padding: '14px',
-              background: (loading || !code.trim()) ? '#ccc' : '#1a73e8',
-              color: 'white',
-              border: 'none',
-              borderRadius: '8px',
-              fontSize: '16px',
-              fontWeight: 'bold',
-              cursor: (loading || !code.trim()) ? 'not-allowed' : 'pointer'
-            }}
-          >
-            {loading ? 'Checking...' : 'Check In'}
-          </button>
-        </form>
-      )}
 
-      {/* Camera Scanner Mode */}
-      {scannerMode === 'camera' && (
-        <div style={{ marginBottom: '30px' }}>
-          {cameraError ? (
-            <div style={{
-              padding: '20px',
-              background: '#ffe6e6',
-              borderRadius: '8px',
-              color: '#d32f2f',
-              textAlign: 'center',
-              marginBottom: '20px'
-            }}>
-              {cameraError}
-            </div>
-          ) : (
-            <>
-              <div style={{ 
-                position: 'relative',
-                width: '100%',
-                maxWidth: '500px',
-                margin: '0 auto 20px',
-                borderRadius: '8px',
-                overflow: 'hidden',
-                background: '#000'
-              }}>
-                <video
-                  ref={videoRef}
-                  style={{ 
-                    width: '100%',
-                    height: 'auto',
-                    display: 'block'
-                  }}
-                />
-                
-                {/* Scanning overlay */}
-                <div style={{
-                  position: 'absolute',
-                  top: '50%',
-                  left: '50%',
-                  transform: 'translate(-50%, -50%)',
-                  width: '80%',
-                  height: '80%',
-                  border: '3px solid #4caf50',
-                  borderRadius: '12px',
-                  boxShadow: '0 0 0 9999px rgba(0,0,0,0.5)',
-                  pointerEvents: 'none'
-                }} />
+          {scanning && (
+            <div className="camera-container">
+              <video ref={videoRef} className="camera-video" playsInline />
+              <canvas ref={canvasRef} style={{ display: 'none' }} />
+              <div className="scanner-overlay">
+                <div className="scanner-box"></div>
               </div>
-              
-              <div style={{
-                padding: '15px',
-                background: '#e3f2fd',
-                borderRadius: '8px',
-                textAlign: 'center',
-                fontSize: '14px',
-                color: '#1565c0'
-              }}>
-                📱 <strong>Position QR code within the frame</strong>
-                <br />
-                Scanning will happen automatically
-              </div>
-            </>
-          )}
-        </div>
-      )}
-      
-      {/* Result Display */}
-      {result && (
-        <div style={{
-          padding: '40px 20px',
-          borderRadius: '12px',
-          textAlign: 'center',
-          fontSize: '20px',
-          fontWeight: 'bold',
-          marginBottom: '20px',
-          background: result.status === 'success' ? '#4caf50' :
-                     result.status === 'already' ? '#ff9800' : '#f44336',
-          color: 'white',
-          boxShadow: '0 4px 16px rgba(0,0,0,0.2)'
-        }}>
-          {result.message}
-          {result.attendee && (
-            <div style={{ marginTop: '20px', fontSize: '16px', fontWeight: 'normal' }}>
-              <p style={{ margin: '8px 0' }}>📧 {result.attendee.email}</p>
-              <p style={{ margin: '8px 0' }}>🎟️ Tickets: {result.attendee.quantity}</p>
+              <p className="scanner-hint">Position QR code in the box</p>
             </div>
           )}
+
+          <div className="manual-entry">
+            <h3>Manual Entry</h3>
+            <form onSubmit={handleManualCheckIn}>
+              <input
+                type="text"
+                value={manualCode}
+                onChange={(e) => setManualCode(e.target.value)}
+                placeholder="Enter booking code (e.g., SS-ABC12345)"
+                disabled={loading}
+              />
+              <button type="submit" className="btn btn-secondary" disabled={loading}>
+                Check In
+              </button>
+            </form>
+          </div>
         </div>
-      )}
-      
-      <div style={{ marginTop: '30px', textAlign: 'center' }}>
-        <a 
-          href="/admin" 
-          style={{ 
-            color: '#1a73e8', 
-            textDecoration: 'none',
-            fontSize: '16px',
-            fontWeight: '500'
-          }}
-        >
-          ← Back to Admin Dashboard
-        </a>
+
+        {attendee && (
+          <div className={`attendee-card ${attendee.checkedIn ? 'checked-in' : 'checked-out'}`}>
+            <div className="attendee-status">
+              {attendee.checkedIn ? (
+                <>
+                  <span className="status-icon">✅</span>
+                  <h2>Checked In</h2>
+                </>
+              ) : (
+                <>
+                  <span className="status-icon">⚠️</span>
+                  <h2>Checked Out</h2>
+                </>
+              )}
+            </div>
+            
+            <div className="attendee-details">
+              <div className="detail-row">
+                <span className="label">Name:</span>
+                <span className="value">{attendee.name}</span>
+              </div>
+              <div className="detail-row">
+                <span className="label">Code:</span>
+                <span className="value"><code>{attendee.code}</code></span>
+              </div>
+              <div className="detail-row">
+                <span className="label">Email:</span>
+                <span className="value">{attendee.email}</span>
+              </div>
+              {attendee.event && (
+                <div className="detail-row">
+                  <span className="label">Event:</span>
+                  <span className="value">{attendee.event.name}</span>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
       </div>
+
+      {/* Load jsQR library */}
+      <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
     </div>
   );
 }

@@ -1,4 +1,3 @@
-// server/src/app.js - COMPLETE REPLACEMENT
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
@@ -8,6 +7,8 @@ import { sendOrderEmail } from './services/email.service.js';
 import { upsertAttendeeFromSession } from './services/attendee.service.js';
 import publicRoutes from './routes/public.routes.js';
 import authRoutes from './routes/auth.routes.js';
+import eventRoutes from './routes/event.routes.js';
+import passwordResetRoutes from './routes/password-reset.routes.js';
 import { requireAuth } from './middleware/auth.middleware.js';
 import { rateLimiter } from './middleware/rate-limit.js';
 import { errorHandler } from './middleware/error-handler.js';
@@ -18,9 +19,7 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 const PORT = process.env.PORT || 4000;
 const WEB_ORIGIN = process.env.WEB_ORIGIN || 'http://localhost:5173';
 
-// ============================================
-// WEBHOOK ROUTE (MUST BE BEFORE express.json())
-// ============================================
+// Webhook BEFORE express.json()
 app.post('/webhooks/stripe', 
   express.raw({ type: 'application/json' }), 
   async (req, res) => {
@@ -49,9 +48,9 @@ app.post('/webhooks/stripe',
           metadata: session.metadata
         });
         
-        const { name, email, phone, quantity } = session.metadata;
+        const { name, email, phone, quantity, eventId } = session.metadata;
         
-        if (!email || !name) {
+        if (!email || !name || !eventId) {
           logger.error('Missing required metadata in webhook', {
             sessionId: session.id,
             metadata: session.metadata
@@ -63,7 +62,6 @@ app.post('/webhooks/stripe',
           });
         }
         
-        // Use service function to create attendees (handles duplicates automatically)
         const attendees = await upsertAttendeeFromSession(session);
         
         if (attendees.length === 0) {
@@ -75,22 +73,24 @@ app.post('/webhooks/stripe',
 
         logger.info(`Created ${attendees.length} attendee(s)`, {
           sessionId: session.id,
+          eventId,
           attendeeIds: attendees.map(a => a.id)
         });
 
-        // Send confirmation email
         const primaryAttendee = attendees[0];
         await sendOrderEmail({
           email: primaryAttendee.email,
           name: primaryAttendee.name,
           code: primaryAttendee.code,
           quantity: attendees.length,
-          amount: session.amount_total / 100
+          amount: session.amount_total / 100,
+          eventName: primaryAttendee.event.name
         });
 
         logger.info('Confirmation email sent', {
           email: primaryAttendee.email,
-          code: primaryAttendee.code
+          code: primaryAttendee.code,
+          eventId
         });
         
       } catch (err) {
@@ -106,19 +106,15 @@ app.post('/webhooks/stripe',
     res.json({ received: true });
 });
 
-// ============================================
-// MIDDLEWARE (AFTER WEBHOOK)
-// ============================================
+// Middleware
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
-// Security headers
 app.use(helmet({
   contentSecurityPolicy: process.env.NODE_ENV === 'production' ? undefined : false,
   crossOriginEmbedderPolicy: false
 }));
 
-// CORS configuration
 app.use(cors({ 
   origin: WEB_ORIGIN,
   credentials: true,
@@ -126,16 +122,14 @@ app.use(cors({
   allowedHeaders: ['Content-Type', 'Authorization']
 }));
 
-// Apply rate limiting to API routes
 app.use('/api', rateLimiter);
 
-// ============================================
-// ROUTES
-// ============================================
+// Routes
 app.use('/api', publicRoutes);
 app.use('/api/auth', requireAuth, authRoutes);
+app.use('/api/events', eventRoutes);
+app.use('/api/password-reset', passwordResetRoutes);
 
-// Health check endpoint
 app.get('/health', (req, res) => {
   res.json({ 
     status: 'ok', 
@@ -145,7 +139,6 @@ app.get('/health', (req, res) => {
   });
 });
 
-// 404 handler
 app.use((req, res) => {
   res.status(404).json({ 
     error: 'Not Found',
@@ -153,12 +146,9 @@ app.use((req, res) => {
   });
 });
 
-// Error handling middleware (must be last)
 app.use(errorHandler);
 
-// ============================================
-// SERVER START
-// ============================================
+// Server start
 const server = app.listen(PORT, () => {
   logger.info(`Server running on http://localhost:${PORT}`);
   logger.info(`Webhook endpoint: http://localhost:${PORT}/webhooks/stripe`);
@@ -167,7 +157,6 @@ const server = app.listen(PORT, () => {
   logger.info(`Stripe mode: ${process.env.STRIPE_SECRET_KEY?.startsWith('sk_test_') ? 'TEST' : 'LIVE'}`);
 });
 
-// Graceful shutdown
 process.on('SIGTERM', () => {
   logger.info('SIGTERM signal received: closing HTTP server');
   server.close(() => {

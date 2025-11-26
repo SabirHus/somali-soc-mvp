@@ -1,105 +1,95 @@
-// server/src/controllers/checkout.controller.js
-import { z } from "zod";
-import { createCheckoutSession } from "../services/payment.service.js";
-import QRCode from 'qrcode';
-import { prisma } from '../models/prisma.js';
-import Stripe from 'stripe';                       
-import { upsertAttendeeFromSession } from '../services/attendee.service.js'; 
-
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, { apiVersion: '2024-06-20' }); 
-
-const payloadSchema = z.object({
-  name: z.string().min(1),
-  email: z.string().email(),
-  phone: z.string().optional().nullable(),
-  quantity: z.union([z.string(), z.number()]).transform((v) => Number(v || 1)).pipe(z.number().int().min(1).max(10)),
-});
+import { createCheckoutSession, getSession } from "../services/payment.service.js";
+import { summary } from "../services/attendee.service.js";
+import { getEventById } from "../services/event.service.js";
+import logger from "../utils/logger.js";
 
 export async function createSession(req, res, next) {
   try {
-    const data = payloadSchema.parse(req.body || {});
-    const paid = await prisma.attendee.count({ where: { status: "PAID" } });
-    const pending = await prisma.attendee.count({ where: { status: "PENDING" } });
-    const capacity = Number(process.env.CAPACITY || 100);
-    const remaining = Math.max(capacity - (paid + pending), 0);
+    const { name, email, phone, quantity, eventId } = req.body;
 
-    // why: avoid overselling when multiple users buy at once
-    if (data.quantity > remaining) {
-      return res.status(409).json({ message: `Only ${remaining} ticket(s) remaining.` });
-    }
-
-    const { url } = await createCheckoutSession(data);
-    return res.json({ url });
-  } catch (err) {
-    return next(err);
-  }
-}
-
-export async function summary(req, res, next) {
-  try {
-    const paid = await prisma.attendee.count({ where: { status: "PAID" } });
-    const pending = await prisma.attendee.count({ where: { status: "PENDING" } });
-    const capacity = Number(process.env.CAPACITY || 100);
-    const remaining = Math.max(capacity - (paid + pending), 0);
-    res.json({ paid, pending, capacity, remaining });
-  } catch (err) {
-    next(err);
-  }
-}
-export async function checkoutSuccess(req, res, next) {
-  try {
-    const session_id = req.query.session_id;
-    if (!session_id) return res.status(400).json({ error: "session_id_required" });
-
-    const session = await stripe.checkout.sessions.retrieve(session_id, { expand: ["customer_details"] });
-    const customerEmail = session?.customer_details?.email || session?.metadata?.email || null;
-
-    let attendee = null;
-    if (customerEmail) {
-      attendee = await prisma.attendee.findFirst({
-        where: { email: customerEmail },
-        orderBy: { createdAt: "desc" },
+    if (!name || !email || !eventId) {
+      return res.status(400).json({
+        error: "validation_error",
+        message: "Name, email, and eventId are required",
       });
     }
 
-    if (!attendee) {
-      const created = await upsertAttendeeFromSession(session);
-      attendee =
-        created?.[0] ||
-        (customerEmail
-          ? await prisma.attendee.findFirst({
-              where: { email: customerEmail },
-              orderBy: { createdAt: "desc" },
-            })
-          : null);
+    const event = await getEventById(eventId, true);
+    
+    if (!event.isActive) {
+      return res.status(400).json({
+        error: "event_inactive",
+        message: "This event is no longer accepting registrations",
+      });
     }
 
-    if (!attendee) return res.sendStatus(425);
+    const requestedQuantity = parseInt(quantity) || 1;
+    if (event.remaining < requestedQuantity) {
+      return res.status(400).json({
+        error: "capacity_exceeded",
+        message: `Not enough tickets available. Requested: ${requestedQuantity}, Available: ${event.remaining}`,
+        available: event.remaining
+      });
+    }
 
-    const qrDataUrl = await QRCode.toDataURL(attendee.code, { margin: 1, width: 256 });
+    if (!event.stripePriceId) {
+      return res.status(400).json({
+        error: "no_stripe_price",
+        message: "This event is not configured for online payments",
+      });
+    }
 
-    const ics =
-      `BEGIN:VCALENDAR
-VERSION:2.0
-PRODID:-//Somali Society//Event//EN
-BEGIN:VEVENT
-SUMMARY:Somali Society Event
-DTSTART:${new Date().toISOString().replace(/[-:]/g, "").split(".")[0]}Z
-DTEND:${new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString().replace(/[-:]/g, "").split(".")[0]}Z
-DESCRIPTION=Ticket code: ${attendee.code}
-END:VEVENT
-END:VCALENDAR`.replace(/\n/g, "\r\n");
-    const icsBase64 = Buffer.from(ics, "utf8").toString("base64");
-    const googleCalendarUrl =
-      "https://calendar.google.com/calendar/render?action=TEMPLATE" +
-      "&text=" +
-      encodeURIComponent("Somali Society Event") +
-      "&details=" +
-      encodeURIComponent(`Ticket code: ${attendee.code}`);
+    logger.info('Creating checkout session for event', {
+      eventId,
+      eventName: event.name,
+      email,
+      quantity: requestedQuantity
+    });
 
-    return res.json({ attendee, qrDataUrl, googleCalendarUrl, icsBase64 });
+    const result = await createCheckoutSession({
+      name,
+      email,
+      phone,
+      quantity: requestedQuantity,
+      eventId,
+      stripePriceId: event.stripePriceId
+    });
+
+    res.json(result);
+  } catch (err) {
+    logger.error('Checkout session creation failed', {
+      error: err.message,
+      body: req.body
+    });
+    next(err);
+  }
+}
+
+export async function checkoutSuccess(req, res, next) {
+  try {
+    const { session_id } = req.query;
+
+    if (!session_id) {
+      return res.status(400).json({
+        error: "session_id_required",
+        message: "Stripe session_id is required",
+      });
+    }
+
+    const session = await getSession(session_id);
+    
+    res.json({
+      success: true,
+      session: {
+        id: session.id,
+        status: session.payment_status,
+        customerEmail: session.customer_email,
+        metadata: session.metadata
+      }
+    });
   } catch (err) {
     next(err);
   }
 }
 
+export { summary };

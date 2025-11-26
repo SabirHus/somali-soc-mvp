@@ -1,84 +1,191 @@
-// Attendee service with the names your controllers expect
-import { prisma } from '../models/prisma.js';
-import crypto from 'node:crypto';
+import { prisma } from "../models/prisma.js";
+import { customAlphabet } from "nanoid";
+import logger from "../utils/logger.js";
 
-// Small helper for QR / check-in codes
-function makeCode() {
-  return crypto.randomBytes(4).toString('hex').toUpperCase();
+const nanoid = customAlphabet("ABCDEFGHJKLMNPQRSTUVWXYZ23456789", 8);
+
+async function generateUniqueCode() {
+  let code;
+  let exists = true;
+
+  while (exists) {
+    code = `SS-${nanoid()}`;
+    const found = await prisma.attendee.findUnique({ where: { code } });
+    exists = !!found;
+  }
+
+  return code;
 }
 
-/**
- * Create or update attendees when Stripe session completes
- * (keeps the name your webhook uses: upsertAttendeeFromSession)
- */
 export async function upsertAttendeeFromSession(session) {
-  // Defensive parsing: old code used these fields
-  const name  = session?.metadata?.name  || session?.customer_details?.name  || 'Guest';
-  const email = session?.metadata?.email || session?.customer_details?.email || null;
-  const phone = session?.metadata?.phone || session?.customer_details?.phone || null;
+  const { name, email, phone, quantity, eventId } = session.metadata;
 
-  // how many tickets?
-  const qty = Math.max(1, Number(session?.metadata?.quantity ?? 1));
-  const results = [];
+  if (!eventId) {
+    throw new Error('Event ID is required in session metadata');
+  }
 
-for (let i = 0; i < Math.max(1, qty); i++) {
-  const code = makeCode();
+  logger.info('Creating attendees from session', {
+    sessionId: session.id,
+    eventId,
+    quantity
+  });
 
-  // idempotent create: ignore duplicate if webhook retries
-  try {
+  const existing = await prisma.attendee.findUnique({
+    where: { stripeSessionId: session.id },
+  });
+
+  if (existing) {
+    logger.warn('Session already processed', {
+      sessionId: session.id,
+      attendeeId: existing.id
+    });
+    return [];
+  }
+
+  const event = await prisma.event.findUnique({
+    where: { id: eventId },
+    include: {
+      _count: {
+        select: { attendees: true }
+      }
+    }
+  });
+
+  if (!event) {
+    throw new Error(`Event ${eventId} not found`);
+  }
+
+  const currentAttendees = event._count.attendees;
+  const requestedQuantity = parseInt(quantity) || 1;
+  const remaining = event.capacity - currentAttendees;
+
+  if (remaining < requestedQuantity) {
+    throw new Error(`Not enough capacity. Requested: ${requestedQuantity}, Available: ${remaining}`);
+  }
+
+  const qty = parseInt(quantity) || 1;
+  const attendees = [];
+
+  for (let i = 0; i < qty; i++) {
+    const code = await generateUniqueCode();
     const attendee = await prisma.attendee.create({
       data: {
-        name,
+        name: i === 0 ? name : `${name} (Guest ${i})`,
         email,
-        phone,
+        phone: phone || null,
         code,
-        checkedIn: false,
-        status: 'PAID',
         stripeSessionId: session.id,
+        eventId,
+        checkedIn: false,
       },
+      include: {
+        event: true
+      }
     });
-    results.push(attendee);
-  } catch (err) {
-    // Prisma unique violation – record already created by a prior webhook attempt
-    if (err?.code !== 'P2002') throw err;
-    // if it was a duplicate, just skip pushing and continue the loop
+    attendees.push(attendee);
   }
-}
-  return results;
+
+  logger.info('Attendees created', {
+    sessionId: session.id,
+    eventId,
+    count: attendees.length,
+    codes: attendees.map(a => a.code)
+  });
+
+  return attendees;
 }
 
-/** Admin: list attendees */
-export async function listAttendees({ q } = {}) {
-  return prisma.attendee.findMany({
-    where: q
-      ? {
-          OR: [
-            { name:  { contains: q, mode: 'insensitive' } },
-            { email: { contains: q, mode: 'insensitive' } },
-            { code:  { contains: q, mode: 'insensitive' } },
-          ],
+export async function listAttendees({ q, eventId } = {}) {
+  const where = {};
+
+  if (eventId) {
+    where.eventId = eventId;
+  }
+
+  if (q && q.trim()) {
+    const search = q.trim().toLowerCase();
+    where.OR = [
+      { name: { contains: search, mode: "insensitive" } },
+      { email: { contains: search, mode: "insensitive" } },
+      { code: { contains: search, mode: "insensitive" } },
+    ];
+  }
+
+  return await prisma.attendee.findMany({
+    where,
+    include: {
+      event: {
+        select: {
+          id: true,
+          name: true,
+          eventDate: true
         }
-      : undefined,
-    orderBy: { createdAt: 'desc' },
+      }
+    },
+    orderBy: { createdAt: "desc" },
   });
 }
 
-/** Admin: toggle check-in by QR/code */
 export async function toggleCheckInByCode(code) {
-  const rec = await prisma.attendee.findUnique({ where: { code } });
-  if (!rec) throw new Error('Attendee not found');
-
-  return prisma.attendee.update({
+  const attendee = await prisma.attendee.findUnique({
     where: { code },
-    data: { checkedIn: !rec.checkedIn },
+    include: {
+      event: {
+        select: {
+          id: true,
+          name: true
+        }
+      }
+    }
   });
+
+  if (!attendee) {
+    throw new Error("Attendee not found");
+  }
+
+  const updated = await prisma.attendee.update({
+    where: { code },
+    data: { checkedIn: !attendee.checkedIn },
+    include: {
+      event: {
+        select: {
+          id: true,
+          name: true
+        }
+      }
+    }
+  });
+
+  logger.info('Check-in toggled', {
+    code,
+    checkedIn: updated.checkedIn,
+    eventId: updated.eventId,
+    eventName: updated.event.name
+  });
+
+  return updated;
 }
 
-/** Dashboard summary (capacity math like your old UI expects) */
 export async function summary() {
-  // If your schema has a separate Payment table, adapt here.
-  const paid   = await prisma.attendee.count({ where: { status: 'PAID' } });
-  const pending= await prisma.attendee.count({ where: { status: 'PENDING' } });
+  const capacity = parseInt(process.env.CAPACITY || "100");
+  const totalAttendees = await prisma.attendee.count();
+  const paidAttendees = await prisma.attendee.count({
+    where: { stripeSessionId: { not: null } }
+  });
 
-  return { paid, pending };
+  return {
+    paid: paidAttendees,
+    pending: totalAttendees - paidAttendees,
+    capacity,
+    remaining: capacity - totalAttendees,
+  };
+}
+
+export async function getAttendeeBySessionId(sessionId) {
+  return await prisma.attendee.findUnique({
+    where: { stripeSessionId: sessionId },
+    include: {
+      event: true
+    }
+  });
 }
