@@ -37,11 +37,16 @@ export default function Admin() {
     capacity: ''
   });
 
-  // Sorting State
-  const [sortConfig, setSortConfig] = useState({
-    key: null,
-    direction: 'asc'
-  });
+// Sorting State - ADD THIS WITH YOUR OTHER STATE
+const [sortConfig, setSortConfig] = useState({
+  key: null,
+  direction: 'asc'
+});
+
+const [attendeeSortConfig, setAttendeeSortConfig] = useState({
+  key: null,
+  direction: 'asc'
+});
 
   // Login Form State
   const [loginForm, setLoginForm] = useState({
@@ -291,52 +296,101 @@ export default function Admin() {
     }
   }
 
-  // ============================================
-  // SORTING FUNCTIONS
-  // ============================================
+// ============================================
+// SORTING FUNCTIONS - ADD THIS SECTION
+// ============================================
 
-  function handleSort(key) {
-    let direction = 'asc';
-    
-    if (sortConfig.key === key && sortConfig.direction === 'asc') {
-      direction = 'desc';
-    }
-    
-    setSortConfig({ key, direction });
+function handleSort(key) {
+  let direction = 'asc';
+  
+  if (sortConfig.key === key && sortConfig.direction === 'asc') {
+    direction = 'desc';
   }
+  
+  setSortConfig({ key, direction });
+}
 
-  function getSortArrow(columnKey) {
-    if (sortConfig.key !== columnKey) {
-      return '⇅';
-    }
-    return sortConfig.direction === 'asc' ? '↑' : '↓';
+function handleAttendeeSort(key) {
+  let direction = 'asc';
+  
+  if (attendeeSortConfig.key === key && attendeeSortConfig.direction === 'asc') {
+    direction = 'desc';
   }
+  
+  setAttendeeSortConfig({ key, direction });
+}
 
-  const sortedEvents = [...events].sort((a, b) => {
-    if (!sortConfig.key) return 0;
-    
-    let aValue = a[sortConfig.key];
-    let bValue = b[sortConfig.key];
-    
-    if (sortConfig.key === 'eventDate') {
-      aValue = new Date(aValue);
-      bValue = new Date(bValue);
-    } else if (sortConfig.key === 'price' || sortConfig.key === 'capacity' || sortConfig.key === 'attendeeCount') {
-      aValue = parseFloat(aValue);
-      bValue = parseFloat(bValue);
-    } else if (typeof aValue === 'string') {
-      aValue = aValue.toLowerCase();
-      bValue = bValue.toLowerCase();
-    }
-    
-    if (aValue < bValue) {
-      return sortConfig.direction === 'asc' ? -1 : 1;
-    }
-    if (aValue > bValue) {
-      return sortConfig.direction === 'asc' ? 1 : -1;
-    }
-    return 0;
-  });
+function getSortArrow(columnKey, config) {
+  if (!config || config.key !== columnKey) {
+    return '⇅';
+  }
+  return config.direction === 'asc' ? '↑' : '↓';
+}
+
+// Sort events
+const sortedEvents = [...events].sort((a, b) => {
+  if (!sortConfig.key) return 0;
+  
+  let aValue = a[sortConfig.key];
+  let bValue = b[sortConfig.key];
+  
+  // Handle different data types
+  if (sortConfig.key === 'eventDate') {
+    aValue = new Date(aValue);
+    bValue = new Date(bValue);
+  } else if (sortConfig.key === 'price' || sortConfig.key === 'capacity' || sortConfig.key === 'attendeeCount') {
+    aValue = parseFloat(aValue);
+    bValue = parseFloat(bValue);
+  } else if (sortConfig.key === 'isActive') {
+    aValue = a.isActive ? 1 : 0;
+    bValue = b.isActive ? 1 : 0;
+  } else if (typeof aValue === 'string') {
+    aValue = aValue.toLowerCase();
+    bValue = bValue.toLowerCase();
+  }
+  
+  if (aValue < bValue) {
+    return sortConfig.direction === 'asc' ? -1 : 1;
+  }
+  if (aValue > bValue) {
+    return sortConfig.direction === 'asc' ? 1 : -1;
+  }
+  return 0;
+});
+
+  const filteredAttendees = attendees.filter(a =>
+    a.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    a.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    a.code.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
+// Sort attendees
+const sortedAttendees = [...filteredAttendees].sort((a, b) => {
+  if (!attendeeSortConfig.key) return 0;
+  
+  let aValue = a[attendeeSortConfig.key];
+  let bValue = b[attendeeSortConfig.key];
+  
+  // Handle different data types
+  if (attendeeSortConfig.key === 'createdAt') {
+    aValue = new Date(aValue);
+    bValue = new Date(bValue);
+  } else if (attendeeSortConfig.key === 'checkedIn') {
+    aValue = a.checkedIn ? 1 : 0;
+    bValue = b.checkedIn ? 1 : 0;
+  } else if (typeof aValue === 'string') {
+    aValue = aValue.toLowerCase();
+    bValue = bValue.toLowerCase();
+  }
+  
+  if (aValue < bValue) {
+    return attendeeSortConfig.direction === 'asc' ? -1 : 1;
+  }
+  if (aValue > bValue) {
+    return attendeeSortConfig.direction === 'asc' ? 1 : -1;
+  }
+  return 0;
+});
 
   // ============================================
   // ATTENDEE FUNCTIONS
@@ -449,12 +503,6 @@ export default function Admin() {
     });
   }
 
-  const filteredAttendees = attendees.filter(a =>
-    a.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    a.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    a.code.toLowerCase().includes(searchQuery.toLowerCase())
-  );
-
   // ============================================
   // RENDER: LOGIN VIEW
   // ============================================
@@ -548,27 +596,29 @@ export default function Admin() {
             <div className="events-table">
               <table>
                 <thead>
-                  <tr>
-                    <th onClick={() => handleSort('name')} style={{ cursor: 'pointer' }}>
-                      EVENT NAME {getSortArrow('name')}
-                    </th>
-                    <th onClick={() => handleSort('eventDate')} style={{ cursor: 'pointer' }}>
-                      DATE {getSortArrow('eventDate')}
-                    </th>
-                    <th onClick={() => handleSort('location')} style={{ cursor: 'pointer' }}>
-                      LOCATION {getSortArrow('location')}
-                    </th>
-                    <th onClick={() => handleSort('price')} style={{ cursor: 'pointer' }}>
-                      PRICE {getSortArrow('price')}
-                    </th>
-                    <th onClick={() => handleSort('attendeeCount')} style={{ cursor: 'pointer' }}>
-                      SOLD {getSortArrow('attendeeCount')}
-                    </th>
-                    <th>REVENUE</th>
-                    <th>STATUS</th>
-                    <th>ACTIONS</th>
-                  </tr>
-                </thead>
+  <tr>
+    <th onClick={() => handleSort('name')} style={{ cursor: 'pointer' }}>
+      EVENT NAME {getSortArrow('name', sortConfig)}
+    </th>
+    <th onClick={() => handleSort('eventDate')} style={{ cursor: 'pointer' }}>
+      DATE {getSortArrow('eventDate', sortConfig)}
+    </th>
+    <th onClick={() => handleSort('location')} style={{ cursor: 'pointer' }}>
+      LOCATION {getSortArrow('location', sortConfig)}
+    </th>
+    <th onClick={() => handleSort('price')} style={{ cursor: 'pointer' }}>
+      PRICE {getSortArrow('price', sortConfig)}
+    </th>
+    <th onClick={() => handleSort('attendeeCount')} style={{ cursor: 'pointer' }}>
+      SOLD {getSortArrow('attendeeCount', sortConfig)}
+    </th>
+    <th>REVENUE</th>
+    <th onClick={() => handleSort('isActive')} style={{ cursor: 'pointer' }}>
+      STATUS {getSortArrow('isActive', sortConfig)}
+    </th>
+    <th>ACTIONS</th>
+  </tr>
+</thead>
                 <tbody>
                   {sortedEvents.map(event => (
                     <tr key={event.id}>
@@ -776,18 +826,30 @@ export default function Admin() {
 
           <div className="attendees-table">
             <table>
-              <thead>
-                <tr>
-                  <th>Name</th>
-                  <th>Email</th>
-                  <th>Phone</th>
-                  <th>Code</th>
-                  <th>Checked In</th>
-                  <th>Registered</th>
-                  <th>Edit</th>
-                  <th>Delete</th>
-                </tr>
-              </thead>
+<thead>
+  <tr>
+    <th onClick={() => handleAttendeeSort('name')} style={{ cursor: 'pointer' }}>
+      NAME {getSortArrow('name', attendeeSortConfig)}
+    </th>
+    <th onClick={() => handleAttendeeSort('email')} style={{ cursor: 'pointer' }}>
+      EMAIL {getSortArrow('email', attendeeSortConfig)}
+    </th>
+    <th onClick={() => handleAttendeeSort('phone')} style={{ cursor: 'pointer' }}>
+      PHONE {getSortArrow('phone', attendeeSortConfig)}
+    </th>
+    <th onClick={() => handleAttendeeSort('code')} style={{ cursor: 'pointer' }}>
+      CODE {getSortArrow('code', attendeeSortConfig)}
+    </th>
+    <th onClick={() => handleAttendeeSort('checkedIn')} style={{ cursor: 'pointer' }}>
+      CHECKED IN {getSortArrow('checkedIn', attendeeSortConfig)}
+    </th>
+    <th onClick={() => handleAttendeeSort('createdAt')} style={{ cursor: 'pointer' }}>
+      REGISTERED {getSortArrow('createdAt', attendeeSortConfig)}
+    </th>
+    <th>Edit</th>
+    <th>Delete</th>
+  </tr>
+</thead>
               <tbody>
                 {filteredAttendees.length === 0 ? (
                   <tr>
@@ -796,7 +858,7 @@ export default function Admin() {
                     </td>
                   </tr>
                 ) : (
-                  filteredAttendees.map(attendee => (
+                  sortedAttendees.map(attendee => (
                     <tr key={attendee.id}>
                       <td>{attendee.name}</td>
                       <td>{attendee.email}</td>
