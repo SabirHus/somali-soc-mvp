@@ -5,23 +5,51 @@ import './Admin.css';
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 
 export default function Admin() {
+  const navigate = useNavigate();
+  
+  // Authentication State
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [token, setToken] = useState(null);
+  
+  // View State
   const [view, setView] = useState('login'); // login, events, attendees, create-event
+  
+  // Data State
   const [events, setEvents] = useState([]);
   const [selectedEvent, setSelectedEvent] = useState(null);
   const [attendees, setAttendees] = useState([]);
   const [summary, setSummary] = useState(null);
+  
+  // UI State
   const [searchQuery, setSearchQuery] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
-  const navigate = useNavigate();
+  
+  // Edit Event State
+  const [editingEvent, setEditingEvent] = useState(null);
+  const [editFormData, setEditFormData] = useState({
+    name: '',
+    description: '',
+    location: '',
+    eventDate: '',
+    eventTime: '',
+    price: '',
+    capacity: ''
+  });
 
+  // Sorting State
+  const [sortConfig, setSortConfig] = useState({
+    key: null,
+    direction: 'asc'
+  });
+
+  // Login Form State
   const [loginForm, setLoginForm] = useState({
     email: '',
     password: ''
   });
 
+  // Create Event Form State
   const [eventForm, setEventForm] = useState({
     name: '',
     description: '',
@@ -33,6 +61,7 @@ export default function Admin() {
     stripePriceId: ''
   });
 
+  // Check authentication on mount
   useEffect(() => {
     const savedToken = localStorage.getItem('adminToken');
     if (savedToken) {
@@ -42,6 +71,10 @@ export default function Admin() {
       fetchEvents(savedToken);
     }
   }, []);
+
+  // ============================================
+  // AUTHENTICATION FUNCTIONS
+  // ============================================
 
   async function handleLogin(e) {
     e.preventDefault();
@@ -83,6 +116,10 @@ export default function Admin() {
     setSelectedEvent(null);
   }
 
+  // ============================================
+  // EVENT FUNCTIONS
+  // ============================================
+
   async function fetchEvents(authToken = token) {
     setLoading(true);
     try {
@@ -95,34 +132,6 @@ export default function Admin() {
       if (!response.ok) throw new Error('Failed to fetch events');
       const data = await response.json();
       setEvents(data);
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function fetchEventAttendees(eventId) {
-    setLoading(true);
-    try {
-      const [attendeesRes, summaryRes] = await Promise.all([
-        fetch(`${API_URL}/api/events/${eventId}/attendees`, {
-          headers: { 'Authorization': `Bearer ${token}` }
-        }),
-        fetch(`${API_URL}/api/events/${eventId}/summary`, {
-          headers: { 'Authorization': `Bearer ${token}` }
-        })
-      ]);
-
-      if (!attendeesRes.ok || !summaryRes.ok) throw new Error('Failed to fetch data');
-
-      const attendeesData = await attendeesRes.json();
-      const summaryData = await summaryRes.json();
-
-      setAttendees(attendeesData);
-      setSummary(summaryData);
-      setSelectedEvent(events.find(e => e.id === eventId));
-      setView('attendees');
     } catch (err) {
       setError(err.message);
     } finally {
@@ -175,6 +184,94 @@ export default function Admin() {
     }
   }
 
+  function handleEditEvent(event) {
+    setEditingEvent(event);
+    setEditFormData({
+      name: event.name,
+      description: event.description || '',
+      location: event.location,
+      eventDate: event.eventDate.split('T')[0],
+      eventTime: event.eventTime,
+      price: event.price,
+      capacity: event.capacity
+    });
+  }
+
+  function handleEditFormChange(e) {
+    const { name, value } = e.target;
+    setEditFormData(prev => ({
+      ...prev,
+      [name]: value
+    }));
+  }
+
+  async function handleUpdateEvent(e) {
+    e.preventDefault();
+    
+    if (!token) {
+      alert('Not authenticated');
+      return;
+    }
+
+    try {
+      const response = await fetch(`${API_URL}/api/auth/events/${editingEvent.id}`, {
+        method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(editFormData)
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.message || 'Failed to update event');
+      }
+
+      alert('Event updated successfully!');
+      setEditingEvent(null);
+      fetchEvents();
+    } catch (error) {
+      console.error('Update event error:', error);
+      alert('Failed to update event: ' + error.message);
+    }
+  }
+
+  async function handleDeleteEvent(eventId, eventName, attendeeCount) {
+    let confirmMessage = `Are you sure you want to delete "${eventName}"?`;
+    
+    if (attendeeCount > 0) {
+      confirmMessage = `⚠️ WARNING: "${eventName}" has ${attendeeCount} registered attendees!\n\nThis will permanently delete the event and all attendees.\n\nContinue?`;
+    }
+    
+    if (!confirm(confirmMessage)) {
+      return;
+    }
+
+    try {
+      const response = await fetch(`${API_URL}/api/auth/events/${eventId}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.message || 'Failed to delete event');
+      }
+
+      alert(`Event "${eventName}" deleted successfully`);
+      fetchEvents();
+    } catch (error) {
+      console.error('Delete event error:', error);
+      alert('Failed to delete event: ' + error.message);
+    }
+  }
+
   async function toggleEventActive(eventId, currentStatus) {
     try {
       const response = await fetch(`${API_URL}/api/events/${eventId}`, {
@@ -193,6 +290,148 @@ export default function Admin() {
       setError(err.message);
     }
   }
+
+  // ============================================
+  // SORTING FUNCTIONS
+  // ============================================
+
+  function handleSort(key) {
+    let direction = 'asc';
+    
+    if (sortConfig.key === key && sortConfig.direction === 'asc') {
+      direction = 'desc';
+    }
+    
+    setSortConfig({ key, direction });
+  }
+
+  function getSortArrow(columnKey) {
+    if (sortConfig.key !== columnKey) {
+      return '⇅';
+    }
+    return sortConfig.direction === 'asc' ? '↑' : '↓';
+  }
+
+  const sortedEvents = [...events].sort((a, b) => {
+    if (!sortConfig.key) return 0;
+    
+    let aValue = a[sortConfig.key];
+    let bValue = b[sortConfig.key];
+    
+    if (sortConfig.key === 'eventDate') {
+      aValue = new Date(aValue);
+      bValue = new Date(bValue);
+    } else if (sortConfig.key === 'price' || sortConfig.key === 'capacity' || sortConfig.key === 'attendeeCount') {
+      aValue = parseFloat(aValue);
+      bValue = parseFloat(bValue);
+    } else if (typeof aValue === 'string') {
+      aValue = aValue.toLowerCase();
+      bValue = bValue.toLowerCase();
+    }
+    
+    if (aValue < bValue) {
+      return sortConfig.direction === 'asc' ? -1 : 1;
+    }
+    if (aValue > bValue) {
+      return sortConfig.direction === 'asc' ? 1 : -1;
+    }
+    return 0;
+  });
+
+  // ============================================
+  // ATTENDEE FUNCTIONS
+  // ============================================
+
+  async function fetchEventAttendees(eventId) {
+    setLoading(true);
+    try {
+      const [attendeesRes, summaryRes] = await Promise.all([
+        fetch(`${API_URL}/api/events/${eventId}/attendees`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        }),
+        fetch(`${API_URL}/api/events/${eventId}/summary`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        })
+      ]);
+
+      if (!attendeesRes.ok || !summaryRes.ok) throw new Error('Failed to fetch data');
+
+      const attendeesData = await attendeesRes.json();
+      const summaryData = await summaryRes.json();
+
+      setAttendees(attendeesData);
+      setSummary(summaryData);
+      setSelectedEvent(events.find(e => e.id === eventId));
+      setView('attendees');
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleToggleCheckIn(code) {
+    try {
+      const response = await fetch(`${API_URL}/api/auth/attendees/${code}/checkin`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to toggle check-in');
+      }
+
+      const data = await response.json();
+      const updatedAttendee = data.attendee || data;
+      
+      setAttendees(prevAttendees => 
+        prevAttendees.map(att => 
+          att.code === code 
+            ? { ...att, checkedIn: updatedAttendee.checkedIn }
+            : att
+        )
+      );
+    } catch (error) {
+      console.error('Toggle check-in error:', error);
+      alert('Failed to toggle check-in: ' + error.message);
+    }
+  }
+
+  async function handleDeleteAttendee(attendeeId, attendeeName) {
+    if (!confirm(`Are you sure you want to delete ${attendeeName}? This cannot be undone.`)) {
+      return;
+    }
+
+    try {
+      const response = await fetch(`${API_URL}/api/auth/attendees/${attendeeId}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to delete attendee');
+      }
+
+      alert(`${attendeeName} deleted successfully`);
+      
+      // Refresh attendee list
+      if (selectedEvent) {
+        fetchEventAttendees(selectedEvent.id);
+      }
+    } catch (error) {
+      console.error('Delete attendee error:', error);
+      alert('Failed to delete attendee: ' + error.message);
+    }
+  }
+
+  // ============================================
+  // UTILITY FUNCTIONS
+  // ============================================
 
   function formatPrice(price) {
     return new Intl.NumberFormat('en-GB', {
@@ -216,7 +455,10 @@ export default function Admin() {
     a.code.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  // LOGIN VIEW
+  // ============================================
+  // RENDER: LOGIN VIEW
+  // ============================================
+
   if (!isAuthenticated) {
     return (
       <div className="admin-container">
@@ -262,9 +504,13 @@ export default function Admin() {
     );
   }
 
-  // MAIN ADMIN VIEW
+  // ============================================
+  // RENDER: MAIN ADMIN VIEW
+  // ============================================
+
   return (
     <div className="admin-container">
+      {/* Header */}
       <div className="admin-header">
         <h1>Admin Dashboard</h1>
         <div className="admin-nav">
@@ -303,18 +549,28 @@ export default function Admin() {
               <table>
                 <thead>
                   <tr>
-                    <th>Event Name</th>
-                    <th>Date</th>
-                    <th>Location</th>
-                    <th>Price</th>
-                    <th>Sold</th>
-                    <th>Revenue</th>
-                    <th>Status</th>
-                    <th>Actions</th>
+                    <th onClick={() => handleSort('name')} style={{ cursor: 'pointer' }}>
+                      EVENT NAME {getSortArrow('name')}
+                    </th>
+                    <th onClick={() => handleSort('eventDate')} style={{ cursor: 'pointer' }}>
+                      DATE {getSortArrow('eventDate')}
+                    </th>
+                    <th onClick={() => handleSort('location')} style={{ cursor: 'pointer' }}>
+                      LOCATION {getSortArrow('location')}
+                    </th>
+                    <th onClick={() => handleSort('price')} style={{ cursor: 'pointer' }}>
+                      PRICE {getSortArrow('price')}
+                    </th>
+                    <th onClick={() => handleSort('attendeeCount')} style={{ cursor: 'pointer' }}>
+                      SOLD {getSortArrow('attendeeCount')}
+                    </th>
+                    <th>REVENUE</th>
+                    <th>STATUS</th>
+                    <th>ACTIONS</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {events.map(event => (
+                  {sortedEvents.map(event => (
                     <tr key={event.id}>
                       <td><strong>{event.name}</strong></td>
                       <td>{formatDate(event.eventDate)}</td>
@@ -328,18 +584,32 @@ export default function Admin() {
                         </span>
                       </td>
                       <td>
-                        <button
-                          onClick={() => fetchEventAttendees(event.id)}
-                          className="btn btn-small"
-                        >
-                          View Attendees
-                        </button>
-                        <button
-                          onClick={() => toggleEventActive(event.id, event.isActive)}
-                          className="btn btn-small"
-                        >
-                          {event.isActive ? 'Deactivate' : 'Activate'}
-                        </button>
+                        <div className="event-actions">
+                          <button
+                            onClick={() => fetchEventAttendees(event.id)}
+                            className="btn btn-small"
+                          >
+                            View Attendees
+                          </button>
+                          <button
+                            onClick={() => handleEditEvent(event)}
+                            className="btn btn-small"
+                          >
+                            Edit
+                          </button>
+                          <button
+                            onClick={() => toggleEventActive(event.id, event.isActive)}
+                            className="btn btn-small"
+                          >
+                            {event.isActive ? 'Deactivate' : 'Activate'}
+                          </button>
+                          <button
+                            onClick={() => handleDeleteEvent(event.id, event.name, event.attendeeCount)}
+                            className="btn btn-delete"
+                          >
+                            Delete
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -514,33 +784,154 @@ export default function Admin() {
                   <th>Code</th>
                   <th>Checked In</th>
                   <th>Registered</th>
+                  <th>Delete</th>
                 </tr>
               </thead>
               <tbody>
                 {filteredAttendees.length === 0 ? (
                   <tr>
-                    <td colSpan="6" style={{ textAlign: 'center', padding: '40px' }}>
+                    <td colSpan="7" style={{ textAlign: 'center', padding: '40px' }}>
                       No attendees found
                     </td>
                   </tr>
                 ) : (
                   filteredAttendees.map(attendee => (
                     <tr key={attendee.id}>
-                      <td><strong>{attendee.name}</strong></td>
+                      <td>{attendee.name}</td>
                       <td>{attendee.email}</td>
                       <td>{attendee.phone || 'N/A'}</td>
                       <td><code>{attendee.code}</code></td>
                       <td>
-                        <span className={`badge ${attendee.checkedIn ? 'badge-success' : 'badge-pending'}`}>
-                          {attendee.checkedIn ? 'Yes' : 'No'}
-                        </span>
+                        <button
+                          onClick={() => handleToggleCheckIn(attendee.code)}
+                          className={`badge ${attendee.checkedIn ? 'badge-success' : 'badge-pending'}`}
+                          style={{ cursor: 'pointer', border: 'none' }}
+                        >
+                          {attendee.checkedIn ? 'YES' : 'NO'}
+                        </button>
                       </td>
-                      <td>{formatDate(attendee.createdAt)}</td>
+                      <td>{new Date(attendee.createdAt).toLocaleDateString()}</td>
+                      <td>
+                        <button
+                          onClick={() => handleDeleteAttendee(attendee.id, attendee.name)}
+                          className="btn-delete"
+                          title="Delete attendee"
+                        >
+                          Delete
+                        </button>
+                      </td>
                     </tr>
                   ))
                 )}
               </tbody>
             </table>
+          </div>
+        </div>
+      )}
+
+      {/* EDIT EVENT MODAL */}
+      {editingEvent && (
+        <div className="modal-overlay" onClick={() => setEditingEvent(null)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2>Edit Event</h2>
+              <button onClick={() => setEditingEvent(null)} className="close-btn">×</button>
+            </div>
+            
+            <form onSubmit={handleUpdateEvent} className="edit-form">
+              <div className="form-group">
+                <label>Event Name *</label>
+                <input
+                  type="text"
+                  name="name"
+                  value={editFormData.name}
+                  onChange={handleEditFormChange}
+                  required
+                />
+              </div>
+
+              <div className="form-group">
+                <label>Description</label>
+                <textarea
+                  name="description"
+                  value={editFormData.description}
+                  onChange={handleEditFormChange}
+                  rows="3"
+                />
+              </div>
+
+              <div className="form-group">
+                <label>Location *</label>
+                <input
+                  type="text"
+                  name="location"
+                  value={editFormData.location}
+                  onChange={handleEditFormChange}
+                  required
+                />
+              </div>
+
+              <div className="form-row">
+                <div className="form-group">
+                  <label>Event Date *</label>
+                  <input
+                    type="date"
+                    name="eventDate"
+                    value={editFormData.eventDate}
+                    onChange={handleEditFormChange}
+                    required
+                  />
+                </div>
+
+                <div className="form-group">
+                  <label>Event Time *</label>
+                  <input
+                    type="text"
+                    name="eventTime"
+                    value={editFormData.eventTime}
+                    onChange={handleEditFormChange}
+                    placeholder="e.g., 19:00-23:00"
+                    required
+                  />
+                </div>
+              </div>
+
+              <div className="form-row">
+                <div className="form-group">
+                  <label>Price (£) *</label>
+                  <input
+                    type="number"
+                    name="price"
+                    value={editFormData.price}
+                    onChange={handleEditFormChange}
+                    step="0.01"
+                    min="0"
+                    required
+                  />
+                </div>
+
+                <div className="form-group">
+                  <label>Capacity *</label>
+                  <input
+                    type="number"
+                    name="capacity"
+                    value={editFormData.capacity}
+                    onChange={handleEditFormChange}
+                    min="1"
+                    required
+                  />
+                </div>
+              </div>
+
+              <div className="modal-actions">
+                <button type="button" onClick={() => setEditingEvent(null)} className="btn btn-secondary">
+                  Cancel
+                </button>
+                <button type="submit" className="btn btn-primary">
+                  Save Changes
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

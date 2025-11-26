@@ -9,7 +9,7 @@ import publicRoutes from './routes/public.routes.js';
 import authRoutes from './routes/auth.routes.js';
 import eventRoutes from './routes/event.routes.js';
 import passwordResetRoutes from './routes/password-reset.routes.js';
-import { requireAuth } from './middleware/auth.middleware.js';
+//import { requireAuth } from './middleware/auth.middleware.js';
 import { rateLimiter } from './middleware/rate-limit.js';
 import { errorHandler } from './middleware/error-handler.js';
 import logger from './utils/logger.js';
@@ -126,7 +126,7 @@ app.use('/api', rateLimiter);
 
 // Routes
 app.use('/api', publicRoutes);
-app.use('/api/auth', requireAuth, authRoutes);
+app.use('/api/auth', authRoutes);
 app.use('/api/events', eventRoutes);
 app.use('/api/password-reset', passwordResetRoutes);
 

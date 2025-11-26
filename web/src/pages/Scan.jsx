@@ -110,28 +110,31 @@ export default function Scan() {
     playSound('scan');
 
     try {
-      const response = await fetch(`${API_URL}/api/attendees/${code}/checkin`, {
+      const response = await fetch(`${API_URL}/api/auth/attendees/${code}/checkin`, {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${token}`
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
         }
       });
 
-      const data = await response.json();
+const data = await response.json();
 
-      if (!response.ok) {
-        throw new Error(data.message || 'Check-in failed');
-      }
+if (!response.ok) {
+  throw new Error(data.message || 'Check-in failed');
+}
 
-      setAttendee(data);
-      
-      if (data.checkedIn) {
-        showMessage('success', `✅ ${data.name} checked in successfully!`);
-        playSound('success');
-      } else {
-        showMessage('warning', `⚠️ ${data.name} checked out`);
-        playSound('warning');
-      }
+// Extract attendee from response
+const attendeeData = data.attendee || data;  // ✅ CORRECT - handles both structures
+setAttendee(attendeeData);
+
+if (attendeeData.checkedIn) {
+  showMessage('success', `✅ ${attendeeData.name} checked in successfully!`);
+  playSound('success');
+} else {
+  showMessage('warning', `⚠️ ${attendeeData.name} checked out`);
+  playSound('warning');
+}
 
       // Clear after 5 seconds
       setTimeout(() => {

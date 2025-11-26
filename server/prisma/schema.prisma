@@ -8,51 +8,49 @@ datasource db {
 }
 
 model Admin {
-  id        String   @id @default(cuid())
-  email     String   @unique
-  password  String
-  name      String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id               String    @id @default(cuid())
+  email            String    @unique
+  password         String
+  name             String
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
   resetToken       String?
   resetTokenExpiry DateTime?
-  
+
   @@map("admins")
 }
 
 model Event {
-  id              String   @id @default(cuid())
-  name            String
-  description     String?
-  location        String
-  eventDate       DateTime
-  eventTime       String
-  price           Float
-  capacity        Int
-  stripePriceId   String?
-  isActive        Boolean  @default(true)
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-  
-  attendees       Attendee[]
-  
+  id            String     @id @default(cuid())
+  name          String
+  description   String?
+  location      String
+  eventDate     DateTime
+  eventTime     String
+  price         Float
+  capacity      Int
+  stripePriceId String?
+  isActive      Boolean    @default(true)
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+  attendees     Attendee[]
+
   @@map("events")
 }
 
 model Attendee {
-  id               String   @id @default(cuid())
-  name             String
-  email            String
-  phone            String?
-  code             String   @unique
-  stripeSessionId  String   @unique
-  checkedIn        Boolean  @default(false)
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
-  
-  eventId          String
-  event            Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
-  
+  id              String   @id @default(cuid())
+  name            String
+  email           String
+  phone           String?
+  code            String   @unique
+  stripeSessionId String   @unique
+  checkedIn       Boolean  @default(false)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  eventId         String
+  event           Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
   @@index([eventId])
   @@index([email])
   @@map("attendees")
