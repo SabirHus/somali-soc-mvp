@@ -11,6 +11,7 @@
   color: white;
   margin-bottom: 40px;
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+  position: relative;
 }
 
 .landing-header h1 {
@@ -27,11 +28,31 @@
   font-weight: 300;
 }
 
+.header-logo {
+  position: absolute;
+  top: 50%;
+  right: 20px; /* Aligned with container padding */
+  transform: translateY(-50%);
+  width: 140px; /* Standard size for desktop */
+  height: 140px;
+  object-fit: contain;
+  border-radius: 12px;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2);
+  background: white; /* Ensures visibility if the image fails */
+  padding: 5px;
+}
+
 .container {
   max-width: 1200px;
   margin: 0 auto;
   padding: 0 20px;
 }
+
+  .landing-header .container {
+    text-align: center;
+    max-width: 100%;
+    margin: 0 auto;
+  }
 
 .loading,
 .error {
@@ -263,6 +284,26 @@
 
   .landing-header p {
     font-size: 1rem;
+  }
+
+    .header-logo {
+    top: 20px; /* Move logo up on mobile */
+    right: 50%;
+    transform: translateX(50%);
+    width: 90px;
+    height: 90px;
+    padding: 5px;
+  }
+  
+  /* Adjust header padding and content centering for mobile */
+  .landing-header {
+    padding-top: 120px; /* Make space for logo on top */
+  }
+  
+  .landing-header .container {
+    text-align: center;
+    max-width: 100%;
+    margin: 0 auto;
   }
 
   .events-grid {

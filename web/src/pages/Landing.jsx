@@ -67,10 +67,20 @@ export default function Landing() {
   return (
     <div className="landing">
       <header className="landing-header">
-        <div className="container">
+        <div className="container header-container">
           <h1>Somali Society Salford</h1>
           <p>Discover and register for upcoming events</p>
         </div>
+        <img 
+          src="/logo.png" // Placeholder URL for the logo image file
+          alt="Somali Society Salford Logo"
+          className="header-logo"
+          // Fallback to a placeholder image if /logo.png fails to load
+          onError={(e) => {
+            e.target.onerror = null;
+            e.target.src = "https://placehold.co/120x120/003B73/ffffff?text=LOGO";
+          }}
+        />
       </header>
 
       <div className="container">
