@@ -3,6 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import './Admin.css';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
+// Define client-side session expiry (2 hours)
+const SESSION_TIMEOUT = 2 * 60 * 60 * 1000; 
 
 export default function Admin() {
   const navigate = useNavigate();
@@ -69,7 +71,16 @@ const [attendeeSortConfig, setAttendeeSortConfig] = useState({
   // Check authentication on mount
   useEffect(() => {
     const savedToken = localStorage.getItem('adminToken');
+    const authTimestamp = localStorage.getItem('authTimestamp');
+
     if (savedToken) {
+      if (authTimestamp && Date.now() - parseInt(authTimestamp) > SESSION_TIMEOUT) {
+        // Session expired client-side
+        console.warn("Client-side session expired. Logging out.");
+        handleLogout(true); // Force logout without confirmation
+        return;
+      }
+      
       setToken(savedToken);
       setIsAuthenticated(true);
       setView('events');
@@ -99,27 +110,39 @@ const [attendeeSortConfig, setAttendeeSortConfig] = useState({
         throw new Error(data.message || 'Login failed');
       }
 
+      // ⭐ FIX 1: Store Token and Timestamp
       localStorage.setItem('adminToken', data.token);
+      localStorage.setItem('authTimestamp', Date.now().toString());
+      
       setToken(data.token);
       setIsAuthenticated(true);
       setView('events');
       fetchEvents(data.token);
     } catch (err) {
       setError(err.message);
+      // Reset both fields on login failure
       setLoginForm({
-      email: '',
-      password: ''
+        email: '',
+        password: ''
       });
     } finally {
       setLoading(false);
     }
   }
 
-  function handleLogout() {
-    if (!window.confirm("Are you sure you want to log out of the Admin Dashboard?")) {
-    return;
-  }
+  function handleLogout(isForced = false) {
+    if (!isForced && !window.confirm("Are you sure you want to log out of the Admin Dashboard?")) {
+      return;
+    }
+    // ⭐ FIX 1: Clear both token and timestamp
     localStorage.removeItem('adminToken');
+    localStorage.removeItem('authTimestamp');
+
+    setLoginForm({
+        email: '',
+        password: ''
+      });
+    
     setToken(null);
     setIsAuthenticated(false);
     setView('login');
@@ -153,10 +176,6 @@ const [attendeeSortConfig, setAttendeeSortConfig] = useState({
 
   async function handleCreateEvent(e) {
     e.preventDefault();
-
-    if (!window.confirm(`Are you sure you want to create the event: "${eventForm.name}"?`)) {
-    return; // Stop execution if the user cancels
-  }
     setLoading(true);
     setError(null);
 
@@ -200,6 +219,19 @@ const [attendeeSortConfig, setAttendeeSortConfig] = useState({
     }
   }
 
+  function handleEditEvent(event) {
+    setEditingEvent(event);
+    setEditFormData({
+      name: event.name,
+      description: event.description || '',
+      location: event.location,
+      eventDate: event.eventDate.split('T')[0],
+      eventTime: event.eventTime,
+      price: event.price,
+      capacity: event.capacity
+    });
+  }
+
   function handleEditFormChange(e) {
     const { name, value } = e.target;
     setEditFormData(prev => ({
@@ -215,10 +247,6 @@ const [attendeeSortConfig, setAttendeeSortConfig] = useState({
       alert('Not authenticated');
       return;
     }
-
-    if (!window.confirm(`Confirm save changes for event: "${editFormData.name}"?`)) {
-    return; // Stop execution if the user cancels
-  }
 
     try {
       const response = await fetch(`${API_URL}/api/auth/events/${editingEvent.id}`, {
@@ -576,7 +604,7 @@ const sortedAttendees = [...filteredAttendees].sort((a, b) => {
           <button onClick={() => navigate('/scan')} className="btn-scan">
             Scanner
           </button>
-          <button onClick={handleLogout} className="btn-logout">
+          <button onClick={() => handleLogout()} className="btn-logout">
             Logout
           </button>
         </div>
