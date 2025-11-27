@@ -1,36 +1,109 @@
 import { Resend } from 'resend';
 import QRCode from 'qrcode';
+import PDFDocument from 'pdfkit';
 import logger from '../utils/logger.js';
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 
-// Define your social media links here
-const INSTAGRAM_URL = 'https://www.instagram.com/'; // Replace with the actual link
-const WHATSAPP_GC_URL = 'https://chat.whatsapp.com/Ba1DrDXZpRo3N4aWrcV6rl'; // Replace with the actual link
+/**
+ * Generate a PDF ticket with QR code
+ */
+async function generateTicketPDF({ name, eventName, eventDate, eventTime, location, code,}) {
+  return new Promise(async (resolve, reject) => {
+    try {
+      const doc = new PDFDocument({ size: 'A4', margin: 50 });
+      const chunks = [];
+      
+      doc.on('data', chunk => chunks.push(chunk));
+      doc.on('end', () => resolve(Buffer.concat(chunks)));
+      doc.on('error', reject);
 
-async function generateQRCodeBuffer(text) {
-  try {
-    const buffer = await QRCode.toBuffer(text, {
-      errorCorrectionLevel: 'H',
-      type: 'png',
-      width: 400,
-      margin: 2,
-      color: {
-        dark: '#000000',
-        light: '#FFFFFF'
-      }
+      // Generate QR code as buffer
+      const qrBuffer = await QRCode.toBuffer(code, {
+        errorCorrectionLevel: 'H',
+        width: 300,
+        margin: 1
+      });
+
+  // Format date for PDF
+    const formattedDate = new Date(eventDate).toLocaleDateString('en-GB', {
+      weekday: 'long',
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric'
     });
-    return buffer;
-  } catch (error) {
-    logger.error('Failed to generate QR code', { error: error.message });
-    throw error;
-  }
+
+      // Header - Somali Society branding
+      doc.fontSize(28).fillColor('#0074D9').text('Somali Society', 50, 50);
+      doc.fontSize(12).fillColor('#666').text('Salford', 50, 82);
+      
+      // Vertical line separator
+      doc.moveTo(400, 50).lineTo(400, 550).strokeColor('#0074D9').lineWidth(3).stroke();
+      
+      // Event name (large, bold)
+      doc.fontSize(22).fillColor('#003B73').text(eventName, 50, 130, { width: 330 });
+      
+      // Date/Time section
+      doc.fontSize(12).fillColor('#666').text('Date/Time', 50, 200);
+      doc.fontSize(11).fillColor('#000').text(`${formattedDate} ${eventTime}`, 50, 220);
+      
+      // Location section
+      doc.fontSize(12).fillColor('#666').text('Location', 50, 260);
+      doc.fontSize(11).fillColor('#000').text(location, 50, 280);
+      
+      // Name section
+      doc.fontSize(12).fillColor('#666').text('Name', 50, 320);
+      doc.fontSize(13).fillColor('#000').text(name, 50, 340);
+      
+      // Booking Code (right side)
+      doc.fontSize(12).fillColor('#666').text('Booking Code', 420, 120);
+      doc.fontSize(14).fillColor('#003B73').text(code, 420, 140, { width: 130 });
+      
+      // QR Code (centered)
+      doc.image(qrBuffer, 95, 390, { width: 240, height: 240 });
+      
+      // Event info at bottom
+      doc.fontSize(14).fillColor('#0074D9').text(`SOMSOC ${eventName}`, 50, 650, { align: 'center', width: 500 });
+      
+      // Footer
+      doc.fontSize(9).fillColor('#999').text(
+        'Somali Society Salford | Registered Student Society',
+        50,
+        720,
+        { align: 'center', width: 500 }
+      );
+      
+      doc.end();
+    } catch (error) {
+      reject(error);
+    }
+  });
 }
 
-export async function sendOrderEmail({ email, name, code, quantity, amount, location, eventName }) {
+/**
+ * Send order confirmation email with PDF ticket attachment
+ */
+export async function sendOrderEmail({ email, name, code, quantity, amount, location, eventName, eventDate, eventTime,}) {
   try {
-    const qrCodeBuffer = await generateQRCodeBuffer(code);
+    // Generate PDF ticket
+    const pdfBuffer = await generateTicketPDF({
+      name,
+      eventName,
+      eventDate,
+      eventTime,
+      location,
+      code,
+    });
 
+    // Format date for email display
+    const formattedDate = new Date(eventDate).toLocaleDateString('en-GB', {
+      weekday: 'long',
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric'
+    });
+
+    // Send email
     const { data, error } = await resend.emails.send({
       from: process.env.MAIL_FROM || 'Somali Society Salford <tickets@somsocsal.com>',
       to: email,
@@ -39,175 +112,236 @@ export async function sendOrderEmail({ email, name, code, quantity, amount, loca
         <!DOCTYPE html>
         <html>
         <head>
+          <meta charset="utf-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
           <style>
             body {
-              font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-              line-height: 1.6;
-              color: #333;
+              margin: 0;
+              padding: 0;
+              font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
+              background: #f5f5f5;
+            }
+            .email-container {
               max-width: 600px;
               margin: 0 auto;
-              padding: 20px;
+              background: white;
             }
             .header {
               background: linear-gradient(135deg, #003B73 0%, #0074D9 100%);
               color: white;
-              padding: 30px;
+              padding: 40px 30px;
               text-align: center;
-              border-radius: 10px 10px 0 0;
             }
             .header h1 {
+              margin: 0 0 10px 0;
+              font-size: 28px;
+              font-weight: 700;
+            }
+            .header p {
               margin: 0;
-              font-size: 24px;
+              font-size: 16px;
+              opacity: 0.95;
             }
             .content {
-              background: #f8f9fa;
-              padding: 30px;
-              border-radius: 0 0 10px 10px;
+              padding: 40px 30px;
             }
-            .ticket-info {
-              background: white;
+            .greeting {
+              font-size: 16px;
+              color: #333;
+              margin: 0 0 20px 0;
+            }
+            .booking-code-box {
+              background: #003B73;
+              color: white;
               padding: 20px;
+              text-align: center;
               border-radius: 8px;
-              margin: 20px 0;
+              margin: 30px 0;
+            }
+            .booking-code-label {
+              font-size: 14px;
+              opacity: 0.9;
+              margin: 0 0 8px 0;
+            }
+            .booking-code {
+              font-size: 32px;
+              font-weight: 700;
+              letter-spacing: 3px;
+              margin: 0;
+            }
+            .info-box {
+              background: #f8f9fa;
               border-left: 4px solid #0074D9;
+              padding: 20px;
+              margin: 20px 0;
+              border-radius: 4px;
             }
             .info-row {
               display: flex;
               justify-content: space-between;
-              padding: 10px 0;
-              border-bottom: 1px solid #e9ecef;
+              padding: 8px 0;
+              border-bottom: 1px solid #dee2e6;
             }
             .info-row:last-child {
               border-bottom: none;
             }
-            .label {
+            .info-label {
               font-weight: 600;
-              color: #003B73;
-            }
-            .value {
               color: #495057;
             }
-            .booking-code {
-              background: #003B73;
-              color: white;
-              padding: 15px;
-              text-align: center;
-              border-radius: 8px;
-              font-size: 24px;
-              font-weight: bold;
-              letter-spacing: 2px;
-              margin: 20px 0;
+            .info-value {
+              color: #212529;
             }
-            .qr-notice {
-              background: #e3f2fd;
-              border-left: 4px solid #0074D9;
-              padding: 15px;
+            .notice-box {
+              background: #fff3cd;
+              border-left: 4px solid #ffc107;
+              padding: 20px;
               margin: 20px 0;
               border-radius: 4px;
             }
-            .footer {
+            .notice-box strong {
+              color: #856404;
+              display: block;
+              margin-bottom: 10px;
+            }
+            .notice-box ul {
+              margin: 10px 0 0 0;
+              padding-left: 20px;
+              color: #856404;
+            }
+            .notice-box li {
+              margin: 8px 0;
+            }
+            .cta-box {
               text-align: center;
-              padding: 20px;
+              margin: 30px 0;
+            }
+            .cta-button {
+              display: inline-block;
+              background: #0074D9;
+              color: white !important;
+              text-decoration: none;
+              padding: 14px 30px;
+              border-radius: 8px;
+              font-weight: 600;
+              font-size: 16px;
+            }
+            .footer {
+              background: #f8f9fa;
+              padding: 30px;
+              text-align: center;
               color: #6c757d;
               font-size: 14px;
+            }
+            .footer a {
+              color: #0074D9;
+              text-decoration: none;
             }
           </style>
         </head>
         <body>
-          <div class="header">
-            <h1>🎉 Booking Confirmed!</h1>
-            <p>${eventName}</p>
-          </div>
-          
-          <div class="content">
-            <p>Hi ${name},</p>
-            <p>Thank you for registering! Your booking has been confirmed.</p>
-            
-            <div class="booking-code">
-              ${code}
+          <div class="email-container">
+            <!-- Header -->
+            <div class="header">
+              <h1>🎉 Booking Confirmed!</h1>
+              <p>${eventName}</p>
             </div>
             
-            <div class="ticket-info">
-              <div class="info-row">
-                <span class="label">Event:</span>
-                <span class="value">${eventName}</span>
+            <!-- Content -->
+            <div class="content">
+              <p class="greeting">Hi ${name},</p>
+              <p class="greeting">Thank you for registering! Your booking has been confirmed.</p>
+              
+              <!-- Booking Code -->
+              <div class="booking-code-box">
+                <p class="booking-code-label">Your Booking Code</p>
+                <p class="booking-code">${code}</p>
               </div>
-              <div class="info-row">
-                <span class="label">Location:</span>
-                <span class="value">${location}</span>
+              
+              <!-- Event Details -->
+              <div class="info-box">
+                <div class="info-row">
+                  <span class="info-label">Event:</span>
+                  <span class="info-value">${eventName}</span>
+                </div>
+                <div class="info-row">
+                  <span class="info-label">Date:</span>
+                  <span class="info-value">${formattedDate}</span>
+                </div>
+                <div class="info-row">
+                  <span class="info-label">Time:</span>
+                  <span class="info-value">${eventTime}</span>
+                </div>
+                <div class="info-row">
+                  <span class="info-label">Location:</span>
+                  <span class="info-value">${location}</span>
+                </div>
+                <div class="info-row">
+                  <span class="info-label">Tickets:</span>
+                  <span class="info-value">${quantity}</span>
+                </div>
+                <div class="info-row">
+                  <span class="info-label">Total Paid:</span>
+                  <span class="info-value">£${amount.toFixed(2)}</span>
+                </div>
               </div>
-              <div class="info-row">
-                <span class="label">Booking Code:</span>
-                <span class="value">${code}</span>
+              
+              <!-- PDF Attachment Notice -->
+              <div class="notice-box">
+                <strong>📱 QR Code Attached</strong>
+                <p style="margin: 0;">Your QR code ticket is attached to this email. Download it and show it at the event entrance for quick check-in!</p>
               </div>
-              <div class="info-row">
-                <span class="label">Tickets:</span>
-                <span class="value">${quantity}</span>
+              
+              <!-- CTA -->
+              <div class="cta-box">
+                <p style="font-size: 18px; color: #0074D9; font-weight: 600; margin: 0 0 20px 0;">
+                  See you at the event! 🎊
+                </p>
               </div>
-              <div class="info-row">
-                <span class="label">Total Paid:</span>
-                <span class="value">£${amount.toFixed(2)}</span>
-              </div>
+              
+              <!-- Need Help -->
+              <h3 style="color: #003B73; margin: 30px 0 15px 0;">Need Help?</h3>
+              <p style="color: #495057;">
+                For event information, check out our 
+                <a href="https://www.instagram.com/" style="color: #0074D9; text-decoration: none; margin: 0 8px;">
+                  Instagram
+                </a>
+                 or 
+                  <a href="https://chat.whatsapp.com/Ba1DrDXZpRo3N4aWrcV6rl" style="color: #0074D9; text-decoration: none; margin: 0 8px;">
+                  WhatsApp
+                </a>.<br>
+                For questions about your booking, contact us at <a href="mailto:contact@somsocsal.com" style="color: #0074D9;">contact@somsocsal.com</a>
+              </p>
             </div>
             
-            <div class="qr-notice">
-              <strong>📱 QR Code Attached</strong>
-              <p style="margin: 10px 0 0 0;">Your QR code ticket is attached to this email. Download it and show it at the event entrance for quick check-in!</p>
+            <!-- Footer -->
+            <div class="footer">
+              <p style="margin: 0 0 10px 0;">© 2025 Somali Society Salford. All rights reserved.</p>
+              <p style="margin: 0; font-size: 12px;">
+                This is an automated confirmation email. Please do not reply to this email.
+              </p>
             </div>
-            
-            <h3>What to bring:</h3>
-            <ul>
-              <li>✅ The attached QR code (printed or on your phone)</li>
-              <li>✅ Your booking code: <strong>${code}</strong></li>
-            </ul>
-            
-            <h3>Need Help?</h3>
-            <p>For more information, check out our social media:</p>
-<div class="social-links" style="margin-top: 15px;">
-    <a href="${INSTAGRAM_URL}" target="_blank" style="text-decoration: none; color: #0074D9; display: inline-flex; align-items: center; font-weight: 500;">
-        <img src="/.instagram.png"" alt="Instagram" style="width: 24px; height: 24px; margin-right: 8px;">
-        Check our Instagram
-    </a>
-    <a href="${WHATSAPP_GC_URL}" target="_blank" style="text-decoration: none; color: #0074D9; display: inline-flex; align-items: center; font-weight: 500;">
-        <img src="/.whatsapp.png" alt="WhatsApp" style="width: 24px; height: 24px; margin-right: 8px;">
-        Join The WhatsApp Group
-    </a>
-          </div>
-          
-          <div class="footer">
-            <p>© 2025 Somali Society Salford. All rights reserved.</p>
-            <p style="font-size: 12px; color: #adb5bd;">
-              This is an automated confirmation email. Please do not reply.
-            </p>
           </div>
         </body>
         </html>
       `,
       attachments: [
         {
-          filename: `ticket-${code}.png`,
-          content: qrCodeBuffer,
+          filename: `${eventName.replace(/[^a-z0-9]/gi, '-')}-Ticket.pdf`,
+          content: pdfBuffer
         }
       ]
     });
 
     if (error) {
-      throw error;
+      logger.error('Email send failed', { error, email });
+      throw new Error(`Failed to send email: ${error.message}`);
     }
 
-    logger.info('Confirmation email sent', {
-      email,
-      messageId: data?.id,
-      code
-    });
-
+    logger.info('Order email sent successfully', { email, code });
     return data;
   } catch (error) {
-    logger.error('Failed to send order confirmation email', {
-      error: error.message,
-      email,
-      code
-    });
+    logger.error('sendOrderEmail error', { error: error.message, email });
     throw error;
   }
 }

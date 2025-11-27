@@ -9,7 +9,6 @@ import publicRoutes from './routes/public.routes.js';
 import authRoutes from './routes/auth.routes.js';
 import eventRoutes from './routes/event.routes.js';
 import passwordResetRoutes from './routes/password-reset.routes.js';
-//import { requireAuth } from './middleware/auth.middleware.js';
 import { rateLimiter } from './middleware/rate-limit.js';
 import { errorHandler } from './middleware/error-handler.js';
 import logger from './utils/logger.js';
@@ -85,7 +84,9 @@ app.post('/webhooks/stripe',
           quantity: attendees.length,
           amount: session.amount_total / 100,
           location: primaryAttendee.event.location,
-          eventName: primaryAttendee.event.name
+          eventName: primaryAttendee.event.name,
+          eventDate: primaryAttendee.event.eventDate,
+          eventTime: primaryAttendee.event.eventTime,
         });
 
         logger.info('Confirmation email sent', {
