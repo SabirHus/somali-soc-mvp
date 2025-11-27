@@ -98,6 +98,7 @@ app.post('/webhooks/stripe',
           eventName: primaryAttendee.event.name,
           eventDate: primaryAttendee.event.eventDate,
           eventTime: primaryAttendee.event.eventTime,
+          attendees: attendees
         });
 
         logger.info('Confirmation email sent', {

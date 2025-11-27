@@ -86,19 +86,48 @@ async function generateTicketPDF({ name, eventName, eventDate, eventTime, locati
 
 /** * Sends order confirmation email with a table-based HTML body and PDF ticket attachment.
  * @param {object} details - Booking and attendee details.
+ * @param {Array} attendees - Array of attendee objects (for multi-ticket support)
  */
-export async function sendOrderEmail({ email, name, code, quantity, amount, location, eventName, eventDate, eventTime,}) {
+export async function sendOrderEmail({ email, name, code, quantity, amount, location, eventName, eventDate, eventTime, attendees }) {
   try {
-    // 1. Generate PDF ticket (Buffer)
-    const pdfBuffer = await generateTicketPDF({
-      name,
-      eventName,
-      eventDate,
-      eventTime,
-      location,
-      code,
-    });
-
+    // 1. Generate PDF tickets - one per attendee
+    const attachments = [];
+    
+    if (attendees && attendees.length > 0) {
+      // Generate PDF for each attendee
+      for (let i = 0; i < attendees.length; i++) {
+        const attendee = attendees[i];
+        const pdfBuffer = await generateTicketPDF({
+          name: attendee.name,
+          eventName,
+          eventDate,
+          eventTime,
+          location,
+          code: attendee.code,
+        });
+        
+        attachments.push({
+          filename: `ticket-${attendee.code}.pdf`,
+          content: pdfBuffer,
+        });
+      }
+    } else {
+      // Fallback: single ticket (backward compatibility)
+      const pdfBuffer = await generateTicketPDF({
+        name,
+        eventName,
+        eventDate,
+        eventTime,
+        location,
+        code,
+      });
+      
+      attachments.push({
+        filename: `ticket-${code}.pdf`,
+        content: pdfBuffer,
+      });
+    }
+    
     // 2. Format details for email body
     const formattedDate = new Date(eventDate).toLocaleDateString('en-GB', {
       weekday: 'long',
@@ -109,6 +138,7 @@ export async function sendOrderEmail({ email, name, code, quantity, amount, loca
     
     const formattedAmount = `£${amount.toFixed(2)}`;
     const defaultFrom = `Somali Soc Tickets <tickets@somsocsal.com>`;
+    const ticketCount = attendees ? attendees.length : quantity;
 
     // 3. Send email via Resend
     const { data, error } = await resend.emails.send({
@@ -117,8 +147,9 @@ export async function sendOrderEmail({ email, name, code, quantity, amount, loca
       subject: `✅ ${eventName} - Ticket Confirmation`,
       headers: {
           // List-Unsubscribe header for better deliverability with Microsoft/Google
-          'List-Unsubscribe': `<mailto:contact@somsocsal.com?subject=Unsubscribe from SomaliSoc Tickets>, <${process.env.APP_URL || 'http://localhost:5173'}/unsubscribe>`
+          'List-Unsubscribe': `<mailto:somsocsalford@gmail.com?subject=Unsubscribe from SomaliSoc Tickets>, <${process.env.APP_URL || 'http://localhost:5173'}/unsubscribe>`
       },
+      attachments: attachments,
       html: `
         <!DOCTYPE html>
         <html>
@@ -282,9 +313,12 @@ export async function sendOrderEmail({ email, name, code, quantity, amount, loca
                     </table>
                     
                     <!-- PDF Attachment Notice -->
-                    <div class="notice-box" style="background: #fff3cd; border-left: 4px solid #ffc107; padding: 20px; margin: 20px 0; border-radius: 4px;">
-                      <strong style="color: #856404; display: block; margin-bottom: 10px;">📱 QR Code Attached</strong>
-                      <p style="margin: 0; color: #856404;">Your QR code ticket is attached to this email. Download it and show it at the event entrance for quick check-in!</p>
+                    <div class="notice-box">
+                      <strong>📱 ${ticketCount > 1 ? 'QR Codes Attached' : 'QR Code Attached'}</strong>
+                      <p>${ticketCount > 1 ? 
+                        `You have ${ticketCount} PDF tickets attached to this email. Each person should download their ticket and show it at the event entrance for quick check-in!` : 
+                       'Your QR code ticket is attached to this email. Download it and show it at the event entrance for quick check-in!'
+                     }</p>
                     </div>
                     
                     <!-- CTA -->
@@ -304,8 +338,7 @@ export async function sendOrderEmail({ email, name, code, quantity, amount, loca
                        or 
                         <a href="https://chat.whatsapp.com/Ba1DrDXZpRo3N4aWrcV6rl" style="color: #0074D9; text-decoration: none; margin: 0 8px;">
                         WhatsApp
-                      </a>.<br>
-                      For questions about your booking, contact us at <a href="mailto:contact@somsocsal.com" style="color: #0074D9;">contact@somsocsal.com</a>
+                      </a><br>
                     </p>
                   </div>
                   
@@ -323,13 +356,7 @@ export async function sendOrderEmail({ email, name, code, quantity, amount, loca
           </center>
         </body>
         </html>
-      `,
-      attachments: [
-        {
-          filename: `${eventName.replace(/[^a-z0-9]/gi, '-')}-Ticket.pdf`,
-          content: pdfBuffer
-        }
-      ]
+      `
     });
 
     if (error) {
@@ -357,7 +384,7 @@ export async function sendPasswordResetEmail({ email, name, resetUrl }) {
       to: email,
       subject: 'Password Reset Request - Somali Society Salford',
       headers: {
-          'List-Unsubscribe': `<mailto:contact@somsocsal.com?subject=Unsubscribe from SomaliSoc Admin>`
+          'List-Unsubscribe': `<mailto:somsocsalford@gmail.com?subject=Unsubscribe from SomaliSoc Admin>`
       },
       html: `
         <!DOCTYPE html>
