@@ -1,10 +1,10 @@
 .legal-container {
   min-height: 100vh;
-  background: linear-gradient(135deg, #003B73 0%, #0074D9 50%, #7FDBFF 100%);
+  background: linear-gradient(135deg, var(--primary-dark) 0%, var(--somali) 50%, #7FDBFF 100%);
 }
 
 .legal-header {
-  background: linear-gradient(135deg, rgba(0, 59, 115, 0.95) 0%, rgba(0, 116, 217, 0.9) 100%);
+  background: linear-gradient(135deg, rgba(11, 30, 63, 0.95) 0%, rgba(31, 111, 214, 0.9) 100%);
   backdrop-filter: blur(10px);
   padding: 40px 20px 60px;
   text-align: center;
@@ -58,13 +58,13 @@
 }
 
 .legal-intro {
+  background: #E3F2FD;
+  border-left: 4px solid var(--somali);
   font-size: 1.1rem;
   line-height: 1.8;
   color: #495057;
   margin-bottom: 40px;
   padding: 20px;
-  background: #E3F2FD;
-  border-left: 4px solid #0074D9;
   border-radius: 8px;
 }
 
@@ -73,15 +73,15 @@ section {
 }
 
 section h2 {
-  color: #003B73;
+  color: var(--primary-dark);
   font-size: 1.8rem;
   margin-bottom: 20px;
   padding-bottom: 10px;
-  border-bottom: 3px solid #0074D9;
+  border-bottom: 3px solid var(--somali);
 }
 
 section h3 {
-  color: #0074D9;
+  color: var(--somali);
   font-size: 1.3rem;
   margin: 30px 0 15px 0;
 }
@@ -103,19 +103,19 @@ section li {
 }
 
 section strong {
-  color: #003B73;
+  color: var(--primary-dark);
   font-weight: 600;
 }
 
 section a {
-  color: #0074D9;
+  color: var(--somali);
   text-decoration: none;
   font-weight: 600;
   transition: all 0.3s ease;
 }
 
 section a:hover {
-  color: #003B73;
+  color: var(--primary-dark);
   text-decoration: underline;
 }
 

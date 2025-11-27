@@ -1,6 +1,6 @@
 .admin-container {
   min-height: 100vh;
-  background: linear-gradient(135deg, #003B73 0%, #0074D9 50%, #7FDBFF 100%);
+  background: linear-gradient(135deg, var(--primary-dark) 0%, var(--somali) 50%, #7FDBFF 100%);
   padding: 0;
 }
 
@@ -31,7 +31,7 @@
 }
 
 .admin-header {
-  background: linear-gradient(135deg, rgba(0, 59, 115, 0.95) 0%, rgba(0, 116, 217, 0.9) 100%);
+  background: linear-gradient(135deg, rgba(11, 30, 63, 0.95) 0%, rgba(31, 111, 214, 0.9) 100%);
   backdrop-filter: blur(10px);
   padding: 20px 40px;
   display: flex;
@@ -69,11 +69,11 @@
 
 .admin-nav button.active {
   background: white;
-  color: #0074D9;
+  color: var(--somali);
 }
 
 .btn-scan {
-  background: #28A745 !important;
+  background: var(--success) !important;
 }
 
 .btn-backMain {
@@ -85,7 +85,7 @@
 }
 
 .btn-logout {
-  background: #DC3545 !important;
+  background: var(--danger) !important;
 }
 
 .admin-content {
@@ -115,9 +115,9 @@
 }
 
 .alert-error {
-  background: #F8D7DA;
-  border-left: 4px solid #DC3545;
-  color: #721C24;
+  background: var(--danger-light);
+  border-left: 4px solid var(--danger);
+  color: var(--danger-dark);
 }
 
 .empty-state {
@@ -149,7 +149,7 @@ table {
 }
 
 thead {
-  background: linear-gradient(135deg, #003B73 0%, #0074D9 100%);
+  background: linear-gradient(135deg, var(--primary-dark) 0%, var(--somali) 100%);
   color: white;
 }
 
@@ -176,7 +176,7 @@ code {
   padding: 4px 8px;
   border-radius: 4px;
   font-family: 'Courier New', monospace;
-  color: #0074D9;
+  color: var(--somali);
   font-weight: 600;
 }
 
@@ -190,22 +190,22 @@ code {
 }
 
 .badge-active {
-  background: #D4EDDA;
+  background: var(--success-light);
   color: #155724;
 }
 
 .badge-inactive {
-  background: #F8D7DA;
-  color: #721C24;
+  background: var(--danger-light);
+  color: var(--danger-dark);
 }
 
 .badge-success {
-  background: #28A745;
+  background: var(--success);
   color: white;
 }
 
 .badge-pending {
-  background: #FFC107;
+  background: var(--warning);
   color: #856404;
 }
 
@@ -220,7 +220,7 @@ code {
 }
 
 .btn-primary {
-  background: linear-gradient(135deg, #0074D9 0%, #003B73 100%);
+  background: linear-gradient(135deg, var(--somali) 0%, var(--primary-dark) 100%);
   color: white;
 }
 
@@ -267,7 +267,7 @@ code {
   display: block;
   margin-bottom: 8px;
   font-weight: 600;
-  color: #003B73;
+  color: var(--primary-dark);
 }
 
 .form-group input,
@@ -287,7 +287,7 @@ code {
 .form-group textarea:focus,
 .form-group select:focus {
   outline: none;
-  border-color: #0074D9;
+  border-color: var(--somali);
   background: white;
   box-shadow: 0 0 0 3px rgba(0, 116, 217, 0.1);
 }
@@ -340,13 +340,13 @@ code {
   border-radius: 12px;
   text-align: center;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-  border-top: 4px solid #0074D9;
+  border-top: 4px solid var(--somali);
 }
 
 .summary-value {
   font-size: 2.5rem;
   font-weight: 700;
-  color: #003B73;
+  color: var(--primary-dark);
   margin-bottom: 8px;
 }
 
@@ -374,7 +374,7 @@ code {
 
 .search-box input:focus {
   outline: none;
-  border-color: #0074D9;
+  border-color: var(--somali);
   box-shadow: 0 0 0 3px rgba(0, 116, 217, 0.2);
 }
 
@@ -390,12 +390,12 @@ code {
 }
 
 .badge-success.badge-clickable:hover {
-  border-color: #28A745;
+  border-color: var(--success);
   background: #1E7E34;
 }
 
 .badge-pending.badge-clickable:hover {
-  border-color: #FFC107;
+  border-color: var(--warning);
   background: #E0A800;
 }
 
@@ -420,7 +420,7 @@ code {
 
 /* Delete Button Styles */
 .btn-delete {
-  background: #DC3545;
+  background: var(--danger);
   color: white;
   border: none;
   padding: 8px 14px;
@@ -557,7 +557,7 @@ code {
 
 .checkbox-label span {
   font-weight: 600;
-  color: #003B73;
+  color: var(--primary-dark);
 }
 
 /* Sortable Table Headers */
@@ -637,7 +637,7 @@ th {
 
 .edit-page-title h2 {
   margin: 0 0 8px 0;
-  color: #003B73;
+  color: var(--primary-dark);
   font-size: 0.9rem;
   font-weight: 600;
   line-height: 1.3;
@@ -645,11 +645,11 @@ th {
 
 /* Highlighted Name - SMALLER */
 .highlight-text {
-  color: #0074D9;
+  color: var(--somali);
   font-weight: 700;
   font-size: 1.1rem;
   text-decoration: underline;
-  text-decoration-color: rgba(0, 116, 217, 0.3);
+  text-decoration-color: rgba(31, 111, 214, 0.3);
   text-decoration-thickness: 2px;
   text-underline-offset: 3px;
   display: inline-block;
@@ -658,7 +658,7 @@ th {
 /* Event Badge - SMALLER */
 .event-badge {
   display: inline-block;
-  background: linear-gradient(135deg, #0074D9 0%, #0059B3 100%);
+  background: linear-gradient(135deg, var(--somali) 0%, #0059B3 100%);
   color: white;
   padding: 8px 16px;
   border-radius: 6px;

@@ -3,8 +3,18 @@ import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
 import { prisma } from '../models/prisma.js';
 
-const JWT_SECRET = process.env.JWT_SECRET || '23f364510d3b6426c511b6859157b42dd006390f8017d828f5e64a16f1a39965';
+// ⭐ CLEANUP: Removed hardcoded fallback. System now relies entirely on ENV variable.
+const JWT_SECRET = process.env.JWT_SECRET; 
 const JWT_EXPIRES_IN = '7d';
+
+if (!JWT_SECRET) {
+  // This should ideally be checked on server startup (app.js)
+  console.error("CRITICAL: JWT_SECRET is missing. Authentication services will fail.");
+  // For immediate functionality without crashing, we'll use an obvious failure key
+  // In a real app, this should throw an error on startup.
+  // JWT_SECRET = 'INSECURE_FALLBACK_SECRET_MUST_BE_REMOVED';
+}
+
 
 export async function registerAdmin({ email, password, name }) {
   // Check if admin already exists
@@ -60,7 +70,7 @@ export async function loginAdmin({ email, password }) {
       email: admin.email,
       name: admin.name
     },
-    JWT_SECRET,
+    JWT_SECRET, // Use environment variable
     { expiresIn: JWT_EXPIRES_IN }
   );
 
@@ -76,7 +86,7 @@ export async function loginAdmin({ email, password }) {
 
 export function verifyToken(token) {
   try {
-    return jwt.verify(token, JWT_SECRET);
+    return jwt.verify(token, JWT_SECRET); // Use environment variable
   } catch (error) {
     throw new Error('Invalid or expired token');
   }

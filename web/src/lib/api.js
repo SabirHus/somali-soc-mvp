@@ -8,8 +8,19 @@ const API_BASE = `${ORIGIN}/api`;
 
 // Minimal axios-like wrapper on top of fetch
 async function request(path, opts = {}) {
+  // Retrieve token from localStorage for all authenticated requests
+  const token = localStorage.getItem('adminToken');
+  const headers = { 
+    "Content-Type": "application/json", 
+    ...(opts.headers || {}) 
+  };
+  
+  if (token && path.startsWith('/auth')) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+
   const res = await fetch(`${API_BASE}${path}`, {
-    headers: { "Content-Type": "application/json", ...(opts.headers || {}) },
+    headers: headers,
     credentials: "include",
     ...opts,
     body:
@@ -18,7 +29,10 @@ async function request(path, opts = {}) {
         : opts.body,
   });
 
-  if (!res.ok) throw new Error(await res.text());
+  if (!res.ok) {
+    const errorText = await res.text();
+    throw new Error(`HTTP ${res.status}: ${errorText}`);
+  }
 
   const ct = res.headers.get("content-type") || "";
   return ct.includes("application/json") ? res.json() : res.text();
@@ -27,30 +41,6 @@ async function request(path, opts = {}) {
 export const api = {
   get:  (p)        => request(p, { method: "GET" }),
   post: (p, body)  => request(p, { method: "POST", body }),
+  put:  (p, body)  => request(p, { method: "PUT", body }),
+  delete: (p)      => request(p, { method: "DELETE" }),
 }
-
-// Helper: build headers with admin password if we have it
-export async function fetchAdminAttendees(password, q = '') {
-  const res = await fetch(`/api/admin/attendees${q ? `?q=${encodeURIComponent(q)}` : ''}`, {
-    headers: adminHeaders(password),
-  });
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  return res.json();
-}
-
-export async function fetchAdminSummary(password) {
-  const res = await fetch(`/api/admin/summary`, {
-    headers: adminHeaders(password),
-  });
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  return res.json();
-}
-
-export async function toggleCheckin(password, code) {
-  const res = await fetch(`/api/admin/checkin/${encodeURIComponent(code)}`, {
-    method: 'POST',
-    headers: adminHeaders(password),
-  });
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  return res.json();
-};
