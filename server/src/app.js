@@ -24,7 +24,15 @@ const app = express();
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 // CRITICAL: Prioritize the port provided by the hosting environment (Render, Vercel)
 const PORT = process.env.PORT || 4000; 
-const WEB_ORIGIN = process.env.WEB_ORIGIN || 'https://somsoc-frontend.onrender.com';
+const WEB_ORIGIN = process.env.WEB_ORIGIN || 'https://somsoc-frontend.onrender.com/';
+
+// CORS Configuration
+app.use(cors({ 
+  origin: WEB_ORIGIN,
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
+}));
 
 // --- Webhook Handler (MUST run before express.json middleware) ---
 
@@ -131,14 +139,6 @@ app.use(helmet({
   // CSP disabled in dev to allow hot-reloading scripts
   contentSecurityPolicy: process.env.NODE_ENV === 'production' ? undefined : false, 
   crossOriginEmbedderPolicy: false
-}));
-
-// CORS Configuration
-app.use(cors({ 
-  origin: WEB_ORIGIN,
-  credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization']
 }));
 
 // Global Rate Limiter
