@@ -20,6 +20,10 @@ import logger from './utils/logger.js';
 
 // --- Initialization ---
 const app = express();
+
+// IMPORTANT when running behind Render's proxy
+app.set('trust proxy', 1);
+
 // Initialize Stripe client
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 // CRITICAL: Prioritize the port provided by the hosting environment (Render, Vercel)
