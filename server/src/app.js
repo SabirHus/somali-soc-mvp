@@ -7,6 +7,7 @@ import Stripe from 'stripe';
 import { prisma } from './models/prisma.js';
 import { sendOrderEmail } from './services/email.service.js';
 import { upsertAttendeeFromSession } from './services/attendee.service.js';
+import { corsMiddleware, allowedOrigins } from './config/cors.js';
 
 // --- Route Imports ---
 import publicRoutes from './routes/public.routes.js';
@@ -178,7 +179,7 @@ const server = app.listen(PORT, () => {
   // ⭐ FIX: Log the actual port being used by the host, removing the misleading 'localhost' prefix
   logger.info(`Server successfully bound to port: ${PORT}`);
   logger.info(`Webhook endpoint should be configured to: ${process.env.APP_URL}/webhooks/stripe`);
-  logger.info(`CORS enabled for: ${WEB_ORIGIN}`);
+  logger.info(`CORS enabled for: ${allowedOrigins.join(', ')}`);
   logger.info(`Environment: ${process.env.NODE_ENV || 'development'}`);
   logger.info(`Stripe mode: ${process.env.STRIPE_SECRET_KEY?.startsWith('sk_test_') ? 'TEST' : 'LIVE'}`);
 });
