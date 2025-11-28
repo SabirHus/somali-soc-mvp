@@ -1,31 +1,32 @@
-// server/src/config/cors.js - Cross-Origin Resource Sharing (CORS) Configuration
+// server/src/config/cors.js
 
 import cors from "cors";
 
-// Read allowed origins from WEB_ORIGIN (comma-separated)
+// WEB_ORIGIN can be a single URL or a comma-separated list
 const rawOrigins = process.env.WEB_ORIGIN || "";
+
+// Normalise to an array of trimmed, non-empty URLs
 const allowedOrigins = rawOrigins
   .split(",")
-  .map((o) => o.trim())
+  .map(o => o.trim())
   .filter(Boolean);
 
-/**
- * CORS middleware configuration for Express.
- * Allows only the origins listed in WEB_ORIGIN.
- */
+console.log("[CORS] Allowed origins:", allowedOrigins);
+
 export const corsMiddleware = cors({
-  origin(origin, callback) {
-    // Allow requests with no origin (e.g. curl, Postman)
+  origin: (origin, callback) => {
+    // Allow requests without an Origin header (curl, health checks, etc.)
     if (!origin) {
       return callback(null, true);
     }
 
     if (allowedOrigins.includes(origin)) {
+      // Origin is allowed – echo it back so the browser is happy
       return callback(null, true);
     }
 
-    // Origin not allowed
-    return callback(new Error(`Not allowed by CORS: ${origin}`));
+    console.warn("[CORS] Blocked origin:", origin);
+    return callback(new Error("Not allowed by CORS"), false);
   },
   credentials: true,
   methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
