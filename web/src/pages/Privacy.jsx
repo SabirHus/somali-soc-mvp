@@ -72,8 +72,8 @@ export default function Privacy() {
           <ul>
             <li><strong>Stripe:</strong> Payment processing (secure, PCI-compliant)</li>
             <li><strong>Resend:</strong> Email delivery service</li>
-            {/* Updated based on Vercel hosting plan */}
-            <li><b>Vercel:</b> Hosting for application code (front-end and back-end APIs)</li>
+            {/* Updated based on Render hosting plan */}
+            <li><b>Render:</b> Hosting for application code (front-end and back-end APIs)</li>
           </ul>
 
           <h3>4.2 We Do NOT:</h3>

@@ -1,7 +1,7 @@
 {
   // Enforces code formatting on file save
   "editor.formatOnSave": true,
-  // Enforces Unix-style line endings (LF), standard for cross-platform Node/Vercel projects
+  // Enforces Unix-style line endings (LF), standard for cross-platform Node projects
   "files.eol": "\n",
   // Specific formatter settings for JSON files
   "[json]": {
