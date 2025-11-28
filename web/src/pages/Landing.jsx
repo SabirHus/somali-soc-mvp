@@ -178,12 +178,11 @@ export default function Landing() {
         </svg>
         WhatsApp
       </a>
-      <span className="divider">|</span>
-      <a href="/admin">Admin</a>
-      <span className="divider">|</span>
-      <a href="/terms">Terms</a>
-      <span className="divider">|</span>
-      <a href="/privacy">Privacy</a>
+<Link to="/admin">Admin</Link>
+<span className="divider">|</span>
+<Link to="/terms">Terms</Link>
+<span className="divider">|</span>
+<Link to="/privacy">Privacy</Link>
     </div>
   </div>
 </footer>
