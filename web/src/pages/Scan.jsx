@@ -251,7 +251,7 @@ async function scanQRCode() {
       // Allow retry after 2 seconds
       setTimeout(() => {
         setLastScannedCode(null);
-      }, 2000);
+      }, 5000);
     } finally {
       setLoading(false);
     }
