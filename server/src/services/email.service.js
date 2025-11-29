@@ -137,7 +137,7 @@ export async function sendOrderEmail({ email, name, code, quantity, amount, loca
     });
     
     const formattedAmount = `£${amount.toFixed(2)}`;
-    const defaultFrom = `Somali Soc Tickets <tickets@somsocsal.com>`;
+    const defaultFrom = `Somali Soc Tickets <no-reply@somsocsal.com>`;
     const ticketCount = attendees ? attendees.length : quantity;
 
     // 3. Send email via Resend
