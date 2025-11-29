@@ -107,6 +107,12 @@ app.post('/webhooks/stripe',
           eventName: primaryAttendee.event.name,
           eventDate: primaryAttendee.event.eventDate,
           eventTime: primaryAttendee.event.eventTime,
+
+        attendees: attendees.map(attendee => ({
+          name: attendee.name,
+          code: attendee.code,
+          email: attendee.email
+           }))
         });
 
         logger.info('Confirmation email sent', {
