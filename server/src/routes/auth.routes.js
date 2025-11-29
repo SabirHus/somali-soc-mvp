@@ -2,7 +2,7 @@
 
 import express from 'express';
 import { prisma } from '../models/prisma.js';
-import { registerAdmin, loginAdmin } from '../services/auth.service.js';
+import { loginAdmin } from '../services/auth.service.js';
 import { adminList} from '../controllers/admin.controller.js';
 import { loginRateLimiter, adminRateLimiter } from '../middleware/rate-limit.js';
 import { asyncHandler } from '../middleware/error-handler.js';
@@ -11,40 +11,6 @@ import { updateEvent } from '../services/event.service.js';
 const router = express.Router();
 
 // --- Public/Unprotected Routes ---
-
-// POST /api/auth/register - Register new admin (usually run once)
-router.post('/register', asyncHandler(async (req, res) => {
-  const { email, password, name } = req.body;
-  
-  if (!email || !password || !name) {
-    return res.status(400).json({ 
-      error: 'validation_error',
-      message: 'Email, password and name are required' 
-    });
-  }
-
-  try {
-    const admin = await registerAdmin({ email, password, name });
-    res.json({ 
-      success: true, 
-      message: 'Admin registered successfully',
-      admin: {
-        id: admin.id,
-        email: admin.email,
-        name: admin.name
-      }
-    });
-  } catch (err) {
-    if (err.message === 'Admin with this email already exists') {
-      return res.status(409).json({ 
-        error: 'admin_exists',
-        message: err.message 
-      });
-    }
-    throw err;
-  }
-}));
-
 // POST /api/auth/login - Admin login (rate limited)
 router.post(
   '/login', 

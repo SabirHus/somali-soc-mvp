@@ -4,7 +4,6 @@ import { createBrowserRouter, RouterProvider } from "react-router-dom";
 // Component Imports
 import Landing from "./pages/Landing.jsx";
 import EventRegister from "./pages/EventRegister.jsx";
-import Register from "./pages/Register.jsx";
 import Success from "./pages/Success.jsx";
 import Admin from "./pages/Admin.jsx";
 import Scan from "./pages/Scan.jsx";
@@ -19,7 +18,6 @@ import "./styles.css";
 const router = createBrowserRouter([
   { path: "/", element: <Landing /> },
   { path: "/event/:eventId", element: <EventRegister /> },
-  { path: "/register", element: <Register /> },
   { path: "/success", element: <Success /> },
   // Admin Routes
   { path: "/admin", element: <Admin /> },
